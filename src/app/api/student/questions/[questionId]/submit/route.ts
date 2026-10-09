@@ -6,6 +6,7 @@ import { studentCriteriaScores, studentSubmissionDto } from "@/lib/dto";
 import { evaluate } from "@/lib/grading";
 import { gradingInput, ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
 import { rateLimit } from "@/lib/rateLimit";
+import { assignmentProgress } from "@/lib/scoring";
 import { GRADING_RATE_LIMIT } from "@/lib/constants";
 import { SubmitSchema } from "@/lib/validation/schemas";
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
     const loaded = await loadGradableQuestion(questionId, user.id);
-    const { question, criteria } = loaded;
+    const { question } = loaded;
 
     const last = await prisma.submission.findFirst({
       where: { questionId, studentId: user.id },
@@ -65,11 +66,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       },
     });
     const allCorrect = questions.every((q) => q.submissions.some((s) => s.isCorrect));
-    const totalPoints = questions.reduce((sum, q) => sum + q.points, 0) || 1;
-    const score =
-      questions.reduce((sum, q) => sum + q.points * Math.max(0, ...q.submissions.map((s) => s.score ?? 0)), 0) /
-      totalPoints;
-    const attempts = questions.reduce((sum, q) => sum + q.submissions.length, 0);
+    const { attempts, bestScore: score } = assignmentProgress(questions);
 
     let completion = await prisma.completion.findUnique({ where: completionWhere });
     if (allCorrect) {
@@ -91,7 +88,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         attemptNumber,
         score: result.score,
         criteriaScores: studentCriteriaScores(result.criteriaScores),
-        ideas: ideaProgress(result, criteria),
+        ideas: ideaProgress(result),
         flaggedIncorrect: result.flaggedIncorrect,
         feedback: result.feedback,
         isCorrect: result.isCorrect,

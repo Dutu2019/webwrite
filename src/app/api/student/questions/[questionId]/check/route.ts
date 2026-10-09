@@ -23,12 +23,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
     const loaded = await loadGradableQuestion(questionId, user.id);
-    const { criteria } = loaded;
 
     const result = await evaluate(gradingInput(loaded, answerText, 1));
 
     return ok({
-      ideas: ideaProgress(result, criteria),
+      ideas: ideaProgress(result),
       flaggedIncorrect: result.flaggedIncorrect,
       feedback: result.feedback,
       isCorrect: result.isCorrect,

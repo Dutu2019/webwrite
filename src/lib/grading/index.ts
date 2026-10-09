@@ -11,8 +11,8 @@ export type {
   GradingInput,
   GradingResult,
 } from "./types";
-export { decideBatch, gradeWithGemma } from "./gemma";
-export type { Question, Answer } from "./gemma";
+export { decideBatch, gradeWithGemma, hintWithGemma } from "./gemma";
+export type { Question, Answer, HintInput } from "./gemma";
 
 /**
  * Grade a single text answer against the question's criteria using hosted

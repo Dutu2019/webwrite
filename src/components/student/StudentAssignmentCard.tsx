@@ -21,16 +21,18 @@ export default function StudentAssignmentCard({ assignment: a }: { assignment: S
         <p className="assignment-sub">
           <span className="assignment-count">{a.questionCount} {a.questionCount === 1 ? "question" : "questions"}</span>
           <span> · {a.dueAt ? `Due ${dateFormat.format(new Date(a.dueAt))}` : "No due date"}</span>
-          {a.description && <span className="assignment-desc"> · {a.description}</span>}
         </p>
+        {a.description && <p className="assignment-desc" title={a.description}>{a.description}</p>}
       </div>
 
       <div className="assignment-side">
-        {a.completed && (
-          <span className="status-pill status-done">
-            Completed{a.completion?.score != null && ` · ${Math.round(a.completion.score)}%`}
+        {a.progress && (
+          <span className="assignment-progress" title="Submissions so far, and your best score">
+            {a.progress.attempts} {a.progress.attempts === 1 ? "attempt" : "attempts"} ·{" "}
+            <strong>Best {Math.round(a.progress.bestScore)}%</strong>
           </span>
         )}
+        {a.completed && <span className="status-pill status-done">Completed</span>}
         <span className={`status-pill status-${a.status.toLowerCase()}`}>{a.status === "CLOSED" ? "Closed" : "Open"}</span>
       </div>
     </article>

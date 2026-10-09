@@ -43,6 +43,8 @@ export interface StudentAssignment extends Assignment {
   questionCount: number;
   completed: boolean;
   completion: { completedAt: string; score: number | null; attempts: number } | null;
+  /** Submissions so far and the best points-weighted score (0–100); null before the first attempt. */
+  progress: { attempts: number; bestScore: number } | null;
 }
 
 interface AuthResponse {

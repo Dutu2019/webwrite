@@ -4,6 +4,8 @@ import { assertEnrolled } from "@/lib/guards";
 import { forbidden, notFound } from "@/lib/http";
 import { assignmentStatus, parseJson } from "@/lib/dto";
 import { DEFAULT_CRITERIA } from "@/lib/constants";
+import { evaluate, type HintInput } from "./index";
+import { parseChoiceAnswer } from "./choice";
 import type { ChoiceOption, Criterion, GradingInput, GradingResult } from "./types";
 
 /**
@@ -59,13 +61,49 @@ export function gradingInput(
 }
 
 /**
- * Student-safe per-idea progress: positional labels ("Idea 1") and statuses,
- * plus the teacher's hint for ideas not yet included. Never the idea text.
+ * Student-safe per-idea progress: positional labels ("Idea 1") and statuses.
+ * Never the idea text or the teacher's hints; hints come from the gated
+ * /hint route.
  */
-export function ideaProgress(result: GradingResult, criteria: Criterion[]) {
+export function ideaProgress(result: GradingResult) {
   return result.criteriaScores.map((score, i) => ({
     label: `Idea ${i + 1}`,
     status: score.status,
-    hint: score.status === "included" ? null : (criteria[i]?.hint ?? null),
   }));
+}
+
+/**
+ * What Gemma needs to write a hint for one answer: the key ideas and how far
+ * the answer has got on each (text questions), or the option texts (multiple
+ * choice). Text answers are graded first; live checks usually cached that.
+ */
+export async function hintInput(
+  loaded: Awaited<ReturnType<typeof loadGradableQuestion>>,
+  studentAnswer: string,
+  attemptNumber: number,
+): Promise<HintInput> {
+  const { question, criteria, choices } = loaded;
+  const base = { prompt: question.prompt, reference: question.reference };
+
+  if (choices?.length) {
+    const picked = new Set(parseChoiceAnswer(studentAnswer));
+    const chosen = choices.filter((o) => picked.has(o.id)).map((o) => o.text);
+    return {
+      ...base,
+      options: choices.map((o) => o.text),
+      studentAnswer: chosen.length ? `Chose: ${chosen.join("; ")}` : "No option chosen",
+    };
+  }
+
+  const result = await evaluate(gradingInput(loaded, studentAnswer, attemptNumber));
+  return {
+    ...base,
+    studentAnswer,
+    essay: question.type === "ESSAY",
+    ideas: criteria.map((c, i) => ({
+      idea: c.description || c.key,
+      status: result.criteriaScores[i]?.status ?? "not_completed",
+      ...(c.hint ? { teacherHint: c.hint } : {}),
+    })),
+  };
 }

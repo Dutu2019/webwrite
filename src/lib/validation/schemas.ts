@@ -101,6 +101,11 @@ export const SubmitSchema = z.object({
   answerText: z.string().min(1).max(20000),
 });
 
+/** The current draft to hint on; omitted → the latest submission. */
+export const HintSchema = z.object({
+  answerText: z.string().max(20000).optional(),
+});
+
 export const StudentSearchSchema = z.object({
   q: z.string().trim().min(1).max(120),
 });

@@ -15,6 +15,9 @@ export const CORRECT_THRESHOLD = 80;
 /** Per-student cap on grading requests (live checks + submits) per minute. */
 export const GRADING_RATE_LIMIT = { max: 30, windowMs: 60_000 };
 
+/** Submissions a student must make on a question before Gemma hints unlock. */
+export const HINT_MIN_ATTEMPTS = 3;
+
 /** Fallback criteria when a question doesn't define its own. */
 export const DEFAULT_CRITERIA = [
   {

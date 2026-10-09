@@ -3,10 +3,12 @@ import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
 import { handle, ok } from "@/lib/http";
 import { assignmentDto } from "@/lib/dto";
+import { assignmentProgress } from "@/lib/scoring";
 
 /**
  * Published assignments across the student's active enrollments, with
- * completion status. Students never see unpublished work or other courses.
+ * completion status and attempt progress. Students never see unpublished work
+ * or other courses.
  */
 export async function GET(req: NextRequest) {
   return handle(async () => {
@@ -24,6 +26,9 @@ export async function GET(req: NextRequest) {
         course: { select: { id: true, name: true } },
         _count: { select: { questions: true } },
         completions: { where: { studentId: user.id } },
+        questions: {
+          select: { points: true, submissions: { where: { studentId: user.id }, select: { score: true } } },
+        },
       },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     });
@@ -31,11 +36,13 @@ export async function GET(req: NextRequest) {
     return ok({
       assignments: assignments.map((a) => {
         const completion = a.completions[0];
+        const { attempts, bestScore } = assignmentProgress(a.questions);
         return {
           ...assignmentDto(a),
           course: a.course,
           questionCount: a._count.questions,
           completed: Boolean(completion),
+          progress: attempts ? { attempts, bestScore } : null,
           completion: completion
             ? {
                 completedAt: completion.completedAt,

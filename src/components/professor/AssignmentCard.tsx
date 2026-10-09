@@ -77,13 +77,17 @@ const AssignmentCard = forwardRef<
         <p className="assignment-sub">
           <span className="assignment-count">{questions} {questions === 1 ? "question" : "questions"}</span>
           <span> · {a.dueAt ? `Due ${dateFormat.format(new Date(a.dueAt))}` : "No due date"}</span>
-          {a.description && <span className="assignment-desc"> · {a.description}</span>}
         </p>
+        {a.description && <p className="assignment-desc" title={a.description}>{a.description}</p>}
         {error && <p className="error assignment-error">{error}</p>}
       </div>
 
       <div className="assignment-side">
-        {a.stats && a.status !== "CREATED" && <StudentStats stats={a.stats} />}
+        {a.stats && a.status !== "CREATED" && (
+          <Link className="assignment-stats-link" href={`/teacher/assignments/${a.id}?tab=students`} title="See each student's attempts and answers">
+            <StudentStats stats={a.stats} />
+          </Link>
+        )}
         {a.status === "CREATED" && (
           <button type="button" className="btn btn-inline btn-small" onClick={makePublic} disabled={busy}>
             {busy ? "Publishing…" : "Make public"}

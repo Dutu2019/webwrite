@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, type Assignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
+import StudentResults from "../professor/StudentResults";
 import QuestionCard from "./QuestionCard";
 import {
   draftFromQuestion,
@@ -45,12 +46,19 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
   const [dragUid, setDragUid] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ uid: string; after: boolean } | null>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
+  // Posted assignments switch between their questions and each student's answers
+  const [tab, setTab] = useState<"questions" | "students">("questions");
 
   const readOnly = Boolean(assignment?.published);
   // Untouched blank questions (like the starter one) don't count as unsaved changes
   const snapshot = useMemo(() => JSON.stringify(toQuestionsPayload(drafts.filter((d) => !isBlankDraft(d)))), [drafts]);
   const dirty = snapshot !== savedSnapshot;
   const savedQuestionCount = assignment?.questions?.length ?? 0;
+
+  // ?tab=students (from the class view's stats) opens the students tab
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "students") setTab("students");
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -251,6 +259,21 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
               </p>
             </section>
 
+            {assignment.published && (
+              <div className="view-tabs" role="tablist" aria-label="Assignment view">
+                <button type="button" role="tab" aria-selected={tab === "questions"} className={`view-tab${tab === "questions" ? " is-active" : ""}`} onClick={() => setTab("questions")}>
+                  Questions
+                </button>
+                <button type="button" role="tab" aria-selected={tab === "students"} className={`view-tab${tab === "students" ? " is-active" : ""}`} onClick={() => setTab("students")}>
+                  Students
+                </button>
+              </div>
+            )}
+
+            {assignment.published && tab === "students" ? (
+              <StudentResults assignmentId={assignment.id} />
+            ) : (
+            <>
             {readOnly && (
               <div className="builder-banner" role="note">
                 <p>This assignment is public, so its questions are locked. Make it private to edit them; students won&apos;t see it until you make it public again.</p>
@@ -325,6 +348,8 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
                   </li>
                 ))}
               </ol>
+            )}
+            </>
             )}
           </div>
 

@@ -7,6 +7,9 @@
 /* Professor: opened / completed out of enrolled students */
 .assignment-stats { display: inline-flex; align-items: center; gap: 12px; font-size: 0.85rem; color: var(--muted); }
 .assignment-stats > span { display: inline-flex; align-items: center; gap: 4px; cursor: default; }
+.assignment-stats-link { color: inherit; text-decoration: none; border-radius: var(--radius); }
+.assignment-stats-link .assignment-stats > span { cursor: pointer; }
+.assignment-stats-link:hover .assignment-stats { color: var(--accent); }
 
 /* Assignment page */
 .student-body { grid-template-columns: minmax(0, 760px); }
@@ -147,6 +150,7 @@
 }
 .hint-btn:hover, .hint-btn.is-open { border-color: var(--gold); background: #f8f0dc; }
 .hint-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.hint-btn:disabled { color: var(--muted); background: var(--paper); border-color: var(--line); cursor: not-allowed; }
 
 .hint-panel {
   margin-top: 8px;
@@ -157,6 +161,7 @@
   font-size: 0.92rem;
 }
 .hint-panel p { margin: 0; }
+.hint-panel.is-error { border-left-color: var(--error); color: var(--error); }
 .hint-panel ul { margin: 0; padding-left: 18px; }
 
 .answer-footer {

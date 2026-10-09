@@ -12,10 +12,10 @@ const ROWS = { SHORT_ANSWER: 2, KEY_IDEAS: 5, ESSAY: 10, MULTIPLE_CHOICE: 0 } as
 
 type SubmitResponse = Feedback & { attemptNumber: number; score: number; ideas: IdeaProgress[] };
 
-/** Feedback recovered from a saved attempt (no hints; those come from live checks). */
+/** Feedback recovered from a saved attempt. */
 function feedbackFromAttempt(a: Attempt): Feedback {
   return {
-    ideas: a.criteriaScores.map((c, i) => ({ label: `Idea ${i + 1}`, status: c.status ?? "not_completed", hint: null })),
+    ideas: a.criteriaScores.map((c, i) => ({ label: `Idea ${i + 1}`, status: c.status ?? "not_completed" })),
     isCorrect: a.isCorrect,
     flaggedIncorrect: false,
     feedback: a.feedback,
@@ -49,6 +49,7 @@ const AnswerCard = forwardRef<AnswerCardHandle, Props>(function AnswerCard({ que
   const lastChecked = useRef(last && !choice ? last.answerText : "");
   const lastSubmitted = useRef(last?.answerText ?? "");
   const checkSeq = useRef(0);
+  const hintCache = useRef<{ answer: string; hint: string } | null>(null);
 
   // Live check: grade the draft after the student pauses typing (stores nothing)
   useEffect(() => {
@@ -101,6 +102,14 @@ const AnswerCard = forwardRef<AnswerCardHandle, Props>(function AnswerCard({ que
   }
 
   const submit = () => send().catch(() => {}); // the error is already shown on the card
+
+  /** Gemma's hint on the current answer; reused until the answer changes. */
+  async function requestHint(): Promise<string> {
+    if (hintCache.current?.answer === answerText) return hintCache.current.hint;
+    const { hint } = await api<{ hint: string }>(`/api/student/questions/${q.id}/hint`, "POST", { answerText });
+    hintCache.current = { answer: answerText, hint };
+    return hint;
+  }
 
   useImperativeHandle(ref, () => ({
     submitPending: async () => {
@@ -166,7 +175,14 @@ const AnswerCard = forwardRef<AnswerCardHandle, Props>(function AnswerCard({ que
         )}
 
         {!(choice && !feedback) && (
-          <FeedbackLine feedback={feedback} checking={checking} canHint={!closed && !completed} />
+          <FeedbackLine
+            feedback={feedback}
+            checking={checking}
+            canHint={!closed && !completed}
+            attempts={attempts}
+            showIdeas={!choice}
+            requestHint={requestHint}
+          />
         )}
       </div>
 

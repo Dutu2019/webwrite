@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ApiError } from "@/lib/client/api";
+import { HINT_MIN_ATTEMPTS } from "@/lib/constants";
 import type { Feedback } from "./types";
 
 /** 0–100: included ideas count fully, ideas in progress count half. */
@@ -22,22 +24,47 @@ function label(f: Feedback, pct: number | null): string {
 
 const STATUS_TEXT = { included: "covered", in_progress: "partly covered", not_completed: "not covered yet" } as const;
 
+type HintState = { kind: "loading" } | { kind: "ready"; text: string } | { kind: "error"; text: string };
+
 /**
  * Gemma's feedback under an answer: how close it is to complete, which ideas are
- * covered, and a lightbulb that reveals a hint on demand.
+ * covered, and a lightbulb that asks Gemma for a hint once the student has
+ * made HINT_MIN_ATTEMPTS submissions.
  */
 export default function FeedbackLine({
   feedback,
   checking,
   canHint,
+  attempts,
+  showIdeas,
+  requestHint,
 }: {
   feedback: Feedback | null;
   checking: boolean;
   canHint: boolean;
+  attempts: number;
+  /** Idea chips; off for multiple choice, which has no ideas. */
+  showIdeas: boolean;
+  requestHint: () => Promise<string>;
 }) {
   const [hintOpen, setHintOpen] = useState(false);
+  const [hint, setHint] = useState<HintState | null>(null);
   const pct = feedback ? closeness(feedback) : null;
-  const hints = feedback?.ideas.filter((i) => i.hint && i.status !== "included") ?? [];
+  const triesLeft = Math.max(0, HINT_MIN_ATTEMPTS - attempts);
+
+  async function toggleHint() {
+    if (hintOpen) {
+      setHintOpen(false);
+      return;
+    }
+    setHintOpen(true);
+    setHint({ kind: "loading" });
+    try {
+      setHint({ kind: "ready", text: await requestHint() });
+    } catch (err) {
+      setHint({ kind: "error", text: err instanceof ApiError ? err.message : "Couldn't get a hint. Try again." });
+    }
+  }
 
   return (
     <div className="feedback">
@@ -71,19 +98,24 @@ export default function FeedbackLine({
             type="button"
             className={`hint-btn${hintOpen ? " is-open" : ""}`}
             aria-expanded={hintOpen}
-            title="Show a hint"
-            onClick={() => setHintOpen((o) => !o)}
+            disabled={triesLeft > 0}
+            title={
+              triesLeft > 0
+                ? `Hints unlock after ${HINT_MIN_ATTEMPTS} submissions`
+                : "Ask Gemma for a hint on your current answer"
+            }
+            onClick={toggleHint}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 18h6M10 21h4" />
               <path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z" />
             </svg>
-            Hint
+            {triesLeft > 0 ? `Hint in ${triesLeft} ${triesLeft === 1 ? "try" : "tries"}` : "Hint"}
           </button>
         )}
       </div>
 
-      {feedback && feedback.ideas.length > 0 && !feedback.isCorrect && (
+      {showIdeas && feedback && feedback.ideas.length > 0 && !feedback.isCorrect && (
         <ul className="idea-chips" aria-label="Key ideas">
           {feedback.ideas.map((i) => (
             <li key={i.label} className={`idea-chip is-${i.status}`}>
@@ -94,21 +126,9 @@ export default function FeedbackLine({
         </ul>
       )}
 
-      {canHint && hintOpen && (
-        <div className="hint-panel" role="note">
-          {hints.length > 0 ? (
-            <ul>
-              {hints.map((i) => (
-                <li key={i.label}><strong>{i.label}:</strong> {i.hint}</li>
-              ))}
-            </ul>
-          ) : feedback?.feedback && !feedback.isCorrect ? (
-            <p>{feedback.feedback}</p>
-          ) : feedback?.isCorrect ? (
-            <p>You&apos;ve covered everything. No hint needed!</p>
-          ) : (
-            <p>Write a first attempt, then open the hint again; it adapts to what you&apos;ve written.</p>
-          )}
+      {canHint && hintOpen && hint && (
+        <div className={`hint-panel${hint.kind === "error" ? " is-error" : ""}`} role="note" aria-live="polite" aria-busy={hint.kind === "loading"}>
+          <p>{hint.kind === "loading" ? "Gemma is looking at your answer…" : hint.text}</p>
         </div>
       )}
     </div>

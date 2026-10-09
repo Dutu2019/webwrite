@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { evaluate } from "@/lib/grading";
 import {
   batchPrompt,
+  hintWithGemma,
   loadReply,
   parseBatch,
+  parseHint,
   type Question,
 } from "@/lib/grading/gemma";
 import type { GradingInput } from "@/lib/grading";
@@ -243,5 +245,38 @@ describe("incorrect-statement check", () => {
     expect(sentPrompt).not.toContain("factually incorrect");
     expect(result.flaggedIncorrect).toBe(false);
     expect(result.isCorrect).toBe(true);
+  });
+});
+
+describe("Gemma hints", () => {
+  it("returns the hint text from a valid reply", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi.fn(async () =>
+      geminiReply({ hint: "You've named gravity. What equation links height and time?" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const hint = await hintWithGemma({
+      prompt: "Explain free fall.",
+      reference: "t = sqrt(2h/g)",
+      studentAnswer: "It falls because of gravity.",
+      ideas: [{ idea: "Uses t = sqrt(2h/g).", status: "not_completed" }],
+    });
+
+    expect(hint).toMatch(/gravity/);
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.contents[0].parts[0].text).toContain("referenceDoNotReveal");
+  });
+
+  it("rejects replies without a usable hint", () => {
+    expect(() => parseHint('{"hint": ""}', "ref")).toThrow();
+    expect(() => parseHint('{"hint": 3}', "ref")).toThrow();
+    expect(() => parseHint('{"nope": "x"}', "ref")).toThrow();
+  });
+
+  it("rejects a hint that repeats the answer key", () => {
+    const reference = "The positively charged nuclei attract the shared electrons between them";
+    expect(() => parseHint(JSON.stringify({ hint: `Say that ${reference}.` }), reference)).toThrow();
+    expect(parseHint('{"hint": "Which particles attract the shared pair?"}', reference)).toMatch(/particles/);
   });
 });
