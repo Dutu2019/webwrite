@@ -1,8 +1,9 @@
 # Gemma Decisions
 
 A small FastAPI service for text decisions using **hosted Gemma 4 through the Gemini API**.
-The boolean/choice/score concepts resemble MediaPipe Decision Maker, but this service does
-not use MediaPipe, diffusion, local inference, or the Jev wire protocol. No GPU is needed.
+The webwrite backend uses it to grade student explanations against key ideas
+(`GRADING_BACKEND=gemma`; see the root [README](../README.md)). It does not use MediaPipe,
+diffusion, local inference, or the Jev wire protocol. No GPU is needed.
 
 ## Start on Windows (PowerShell)
 
