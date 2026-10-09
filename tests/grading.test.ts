@@ -169,3 +169,79 @@ describe("batch prompt and parsing", () => {
     expect(prompt).toContain('"idea_0": zero-based integer rubric index|null');
   });
 });
+
+describe("transient Gemini failures", () => {
+  const ok = () => geminiReply({ idea_0: 2, idea_1: 2, incorrect: false });
+
+  it("retries once after a 5xx and accepts the second reply", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("oops", { status: 500 }))
+      .mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await evaluate(input({ prompt: "retry-5xx", studentAnswer: "r1" }));
+    expect(result.isCorrect).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries once after a dropped connection", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await evaluate(input({ prompt: "retry-network", studentAnswer: "r2" }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after a second 5xx", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi.fn(async () => new Response("oops", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      evaluate(input({ prompt: "retry-twice", studentAnswer: "r3" })),
+    ).rejects.toMatchObject({ status: 502, code: "GRADING_UPSTREAM" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("never retries a timeout, a 429, or invalid output", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const timeout = Object.assign(new Error("slow"), { name: "TimeoutError" });
+    const cases: Array<[() => Promise<Response>, number]> = [
+      [async () => { throw timeout; }, 504],
+      [async () => new Response("", { status: 429 }), 429],
+      [async () => geminiReply({ nope: 1 }), 502],
+    ];
+    for (const [i, [impl, status]] of cases.entries()) {
+      const fetchMock = vi.fn(impl);
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        evaluate(input({ prompt: `no-retry-${i}`, studentAnswer: `r4-${i}` })),
+      ).rejects.toMatchObject({ status });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    }
+  });
+});
+
+describe("incorrect-statement check", () => {
+  it("is skipped when checkIncorrect is false (essays)", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      geminiReply({ idea_0: 2, idea_1: 2 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await evaluate(
+      input({ prompt: "essay", studentAnswer: "e1", checkIncorrect: false }),
+    );
+    const sentPrompt = String(fetchMock.mock.calls[0]![1].body);
+    expect(sentPrompt).not.toContain("factually incorrect");
+    expect(result.flaggedIncorrect).toBe(false);
+    expect(result.isCorrect).toBe(true);
+  });
+});

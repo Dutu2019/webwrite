@@ -142,6 +142,48 @@ async function main() {
     },
   });
 
+  const bonding = await prisma.assignment.upsert({
+    where: { id: "asg_bonding" },
+    update: {},
+    create: {
+      id: "asg_bonding",
+      courseId: physics.id,
+      title: "Explain It: Covalent Bonds",
+      description: "Explain in your own words; key ideas are checked as you write.",
+      published: true,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.question.upsert({
+    where: { id: "q_b1" },
+    update: {},
+    create: {
+      id: "q_b1",
+      assignmentId: bonding.id,
+      order: 0,
+      type: "KEY_IDEAS",
+      prompt:
+        "Two hydrogen atoms share valence electrons in the overlapping region of their shells. " +
+        "Describe how this sharing helps hold the atoms together, identifying the particles " +
+        "involved in the attraction.",
+      reference:
+        "The shared electron pair sits between the two nuclei. Each positively charged nucleus " +
+        "(proton) is electrostatically attracted to the negatively charged shared electrons, which " +
+        "holds the atoms together. Sharing also gives each hydrogen a full valence shell of two electrons.",
+      criteria: JSON.stringify([
+        { key: "idea1", weight: 1,
+          description: "The positively charged nuclei (protons) of both atoms are attracted to the " +
+            "negatively charged shared electrons between them, and this holds the atoms together.",
+          hint: "What particles attract the shared electrons, and why?" },
+        { key: "idea2", weight: 1,
+          description: "Sharing lets each hydrogen atom fill its valence shell (two electrons each).",
+          hint: "What does sharing do for each atom's valence shell?" },
+      ]),
+      points: 1,
+    },
+  });
+
   const civil = await prisma.assignment.upsert({
     where: { id: "asg_civil" },
     update: {},
@@ -155,9 +197,29 @@ async function main() {
     },
   });
 
+  // Essay ideas describe argumentative moves, so any defensible position can
+  // pass; ESSAY questions also skip the "states something incorrect" check.
+  const civilCriteria = JSON.stringify([
+    { key: "idea1", weight: 1,
+      description: "Distinguishes civil disobedience from ordinary law-breaking (e.g. public, nonviolent, accepts punishment).",
+      hint: "What makes civil disobedience different from just breaking the law?" },
+    { key: "idea2", weight: 1,
+      description: "Takes a clear position on whether it can be justified in a democracy.",
+      hint: "Where do you stand? Say it plainly." },
+    { key: "idea3", weight: 1,
+      description: "Gives a principled argument for that position, e.g. justice versus legality.",
+      hint: "Why should someone accept your position? Name the principle behind it." },
+    { key: "idea4", weight: 1,
+      description: "Addresses the main counterargument, such as undermining the rule of law.",
+      hint: "What would someone who disagrees say, and how do you answer them?" },
+    { key: "idea5", weight: 1,
+      description: "Uses a concrete historical or hypothetical example.",
+      hint: "Can you ground this in a real or imagined case?" },
+  ]);
+
   await prisma.question.upsert({
     where: { id: "q_h1" },
-    update: {},
+    update: { criteria: civilCriteria },
     create: {
       id: "q_h1",
       assignmentId: civil.id,
@@ -171,10 +233,7 @@ async function main() {
 3. Gives a principled argument (justice vs legality).
 4. Addresses the counterargument (undermining the rule of law).
 5. Uses a concrete example or analogy.`,
-      criteria: JSON.stringify([
-        { key: "completeness", weight: 0.5, description: "Addresses multiple rubric dimensions." },
-        { key: "elaboration", weight: 0.5, description: "Develops a reasoned, illustrated argument." },
-      ]),
+      criteria: civilCriteria,
       points: 2,
     },
   });
@@ -183,7 +242,7 @@ async function main() {
   console.log(`  teacher: ${teacher.email}`);
   console.log(`  students: ${alice.email}, ${bob.email}`);
   console.log(`  courses: ${physics.name} (${physics.joinCode}), ${history.name} (${history.joinCode})`);
-  console.log(`  assignments: ${kinematics.title}, ${civil.title}`);
+  console.log(`  assignments: ${kinematics.title}, ${bonding.title}, ${civil.title}`);
 }
 
 main()

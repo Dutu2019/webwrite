@@ -8,11 +8,10 @@ import type {
 } from "./types";
 
 /**
- * Hosted Gemma 4 through the Gemini API. This is a TypeScript port of
- * `gemma/app.py`: the caller supplies one context and several named questions,
- * and a single model call returns a validated answer per question. Nothing is
- * guessed: unknown labels, wrong types, truncation, and blocked responses are
- * rejected rather than repaired.
+ * Hosted Gemma 4 through the Gemini API. The caller supplies one context and
+ * several named questions, and a single model call returns a validated answer
+ * per question. Nothing is guessed: unknown labels, wrong types, truncation,
+ * and blocked responses are rejected rather than repaired.
  */
 
 const DEFAULT_MODEL = "gemma-4-26b-a4b-it";
@@ -182,23 +181,39 @@ function geminiPayload(prompt: string, thinking: boolean, extraTokens: number) {
   };
 }
 
+async function postToGemini(model: string, key: string, payload: unknown): Promise<Response> {
+  return fetch(GEMINI_URL.replace("{model}", model), {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+}
+
 async function callGemini(
   model: string,
   key: string,
   payload: unknown,
 ): Promise<GeminiResponse> {
-  let res: Response;
-  try {
-    res = await fetch(GEMINI_URL.replace("{model}", model), {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new HttpError(504, "GRADING_TIMEOUT", "Gemini API timed out.");
+  // Google's API fails transiently now and then (HTTP 5xx, dropped connections;
+  // about 1 call in 10 in testing), so those get exactly one retry. Timeouts,
+  // 429s and invalid model output are never retried.
+  let res: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const retry = attempt === 0;
+    try {
+      res = await postToGemini(model, key, payload);
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new HttpError(504, "GRADING_TIMEOUT", "Gemini API timed out.");
+      }
+      if (retry) continue;
+      throw new HttpError(502, "GRADING_UNREACHABLE", "Could not reach the Gemini API.");
     }
+    if (res.status >= 500 && retry) continue;
+    break;
+  }
+  if (!res) {
     throw new HttpError(502, "GRADING_UNREACHABLE", "Could not reach the Gemini API.");
   }
 
@@ -302,9 +317,10 @@ const INCORRECT_CHECK = "incorrect";
 
 /**
  * Turn the professor's list of criteria into model questions: one "score"
- * question per key idea, plus a boolean check for a factually incorrect answer.
+ * question per key idea, plus (unless disabled) a boolean check for a
+ * factually incorrect answer.
  */
-function gradingQuestions(criteria: Criterion[]): Record<string, Question> {
+function gradingQuestions(criteria: Criterion[], checkIncorrect: boolean): Record<string, Question> {
   const questions: Record<string, Question> = {};
   criteria.forEach((criterion, i) => {
     questions[`idea_${i}`] = {
@@ -315,12 +331,14 @@ function gradingQuestions(criteria: Criterion[]): Record<string, Question> {
       rubric: GRADING_LEVELS,
     };
   });
-  questions[INCORRECT_CHECK] = {
-    kind: "boolean",
-    condition:
-      "The student explanation states something factually incorrect about the question's topic. " +
-      "Missing detail, spelling, and grammar do not count as incorrect.",
-  };
+  if (checkIncorrect) {
+    questions[INCORRECT_CHECK] = {
+      kind: "boolean",
+      condition:
+        "The student explanation states something factually incorrect about the question's topic. " +
+        "Missing detail, spelling, and grammar do not count as incorrect.",
+    };
+  }
   return questions;
 }
 
@@ -354,7 +372,11 @@ async function grade(input: GradingInput): Promise<GradingResult> {
     studentExplanation: input.studentAnswer,
   });
 
-  const answers = await decideBatch(context, gradingQuestions(criteria), false);
+  const answers = await decideBatch(
+    context,
+    gradingQuestions(criteria, input.checkIncorrect !== false),
+    false,
+  );
 
   const criteriaScores: CriteriaScore[] = criteria.map((criterion, i) => {
     const answer = answers[`idea_${i}`];
@@ -396,6 +418,7 @@ export function gradeWithGemma(input: GradingInput): Promise<GradingResult> {
     input.prompt,
     input.reference,
     input.criteria ?? [],
+    input.checkIncorrect !== false,
     input.studentAnswer,
   ]);
 

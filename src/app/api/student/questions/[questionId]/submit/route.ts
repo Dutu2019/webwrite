@@ -2,9 +2,11 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
 import { handle, ok } from "@/lib/http";
-import { studentSubmissionDto } from "@/lib/dto";
+import { studentCriteriaScores, studentSubmissionDto } from "@/lib/dto";
 import { evaluate } from "@/lib/grading";
-import { ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
+import { gradingInput, ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
+import { rateLimit } from "@/lib/rateLimit";
+import { GRADING_RATE_LIMIT } from "@/lib/constants";
 import { SubmitSchema } from "@/lib/validation/schemas";
 
 interface Ctx {
@@ -19,9 +21,11 @@ interface Ctx {
 export async function POST(req: NextRequest, { params }: Ctx) {
   return handle(async () => {
     const user = await requireRole(req, "STUDENT");
+    rateLimit(`grading:${user.id}`, GRADING_RATE_LIMIT.max, GRADING_RATE_LIMIT.windowMs);
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
-    const { question, criteria, choices } = await loadGradableQuestion(questionId, user.id);
+    const loaded = await loadGradableQuestion(questionId, user.id);
+    const { question, criteria } = loaded;
 
     const last = await prisma.submission.findFirst({
       where: { questionId, studentId: user.id },
@@ -29,14 +33,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     });
     const attemptNumber = (last?.attemptNumber ?? 0) + 1;
 
-    const result = await evaluate({
-      prompt: question.prompt,
-      reference: question.reference,
-      criteria,
-      choices,
-      studentAnswer: answerText,
-      attemptNumber,
-    });
+    const result = await evaluate(gradingInput(loaded, answerText, attemptNumber));
 
     const submission = await prisma.submission.create({
       data: {
@@ -93,7 +90,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         submission: studentSubmissionDto(submission),
         attemptNumber,
         score: result.score,
-        criteriaScores: result.criteriaScores,
+        criteriaScores: studentCriteriaScores(result.criteriaScores),
         ideas: ideaProgress(result, criteria),
         flaggedIncorrect: result.flaggedIncorrect,
         feedback: result.feedback,
