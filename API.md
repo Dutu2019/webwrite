@@ -102,10 +102,13 @@ future denylist.
 ### `POST /api/courses` 🔒 teacher
 
 ```json
-{ "name": "Physics 101", "description": "optional" }
+{ "name": "Physics 101", "description": "optional", "joinCode": "optional, e.g. PHYS101" }
 ```
 
-**201**: `{ "course": { ... } }` — includes a generated unique `joinCode`.
+`joinCode` is optional: 3–16 letters/digits, stored upper-case. When omitted, a
+unique 8-character code is generated. **409** if the chosen code is taken.
+
+**201**: `{ "course": { ... } }` including its `joinCode`.
 
 ### `GET /api/courses/{id}` 🔒 teacher (owner)
 
@@ -115,8 +118,11 @@ future denylist.
 ### `PATCH /api/courses/{id}` 🔒 teacher (owner)
 
 ```json
-{ "name": "New name", "description": "New description" }
+{ "name": "New name", "description": "New description", "joinCode": "NEWCODE" }
 ```
+
+All fields optional. Changing `joinCode` means the old code no longer works;
+**409** if the new code is taken.
 
 ### `DELETE /api/courses/{id}` 🔒 teacher (owner)
 
@@ -195,6 +201,7 @@ Creates/activates the enrollment and marks the invite `ACCEPTED`.
   "dueAt": "2026-11-01T00:00:00.000Z",
   "questions": [
     {
+      "type": "SHORT_ANSWER",
       "prompt": "A ball is dropped from 20 m...",
       "reference": "t = sqrt(2h/g) ≈ 2.02 s",
       "criteria": [
@@ -209,7 +216,40 @@ Creates/activates the enrollment and marks the invite `ACCEPTED`.
 ```
 
 **201**: `{ "assignment": { ...assignment, questions: [ ...full question incl. reference ] } }`.
-Unpublished by default.
+Unpublished by default. `questions` may be omitted or empty to create a draft;
+questions can be added later with `PATCH`.
+
+Each question has a `type` (default `SHORT_ANSWER`). All types are free-text
+answers graded against `reference` and `criteria`; the type tells the UI how to
+author and display the question:
+
+| type           | `reference` holds | `criteria`                                                        |
+| -------------- | ----------------- | ----------------------------------------------------------------- |
+| `SHORT_ANSWER` | model answer      | optional (defaults apply)                                         |
+| `KEY_IDEAS`    | model answer      | **required**: one per idea, `{ key: "idea1", description, hint? }` |
+| `ESSAY`        | rubric            | optional (defaults apply)                                         |
+| `MULTIPLE_CHOICE` | short answer-key note | unused; send `options` instead                              |
+
+`MULTIPLE_CHOICE` questions carry `options: [{ id, text, correct }]` (2–20, unique
+ids, at least one `correct`). They are marked exactly, not by the text grader:
+students submit the chosen option ids as `answerText` (`"b"`, `"a,c"` or
+`["a","c"]`); several correct options means "select all that apply" and only the
+exact set counts as correct.
+
+`type` is also returned on student question objects (never `reference`/`criteria`).
+For multiple choice, students get `options: [{ id, text }]` (never `correct`) and
+`multipleAnswers: true` when more than one option is correct.
+
+Prompts, references, ideas and option text may contain LaTeX (`$…$`, `$$…$$`,
+`\(…\)`, `\[…\]`); the API stores it as plain text and the UI renders it.
+
+Every assignment object includes a derived `status`:
+
+| status    | when                                           |
+| --------- | ---------------------------------------------- |
+| `CREATED` | not published                                  |
+| `POSTED`  | published, and `dueAt` is unset or in the future |
+| `CLOSED`  | published, and `dueAt` has passed              |
 
 ### `GET /api/assignments/{id}` 🔒 teacher (owner)
 
@@ -231,6 +271,7 @@ Accept `title`, `description`, `dueAt`, and/or `questions` (full replacement).
 ```
 
 **200**: `{ "assignment": { ... } }`. Publishing sets `publishedAt` once.
+**400** when publishing an assignment that has no questions.
 
 ### `GET /api/assignments/{id}/submissions` 🔒 teacher (owner)
 
@@ -306,6 +347,8 @@ criterion hint, shown only while that idea isn't included. `flaggedIncorrect` me
 the answer states something wrong; it blocks completion. Enable "Continue" when
 `isCorrect` is true, then call submit, which re-grades on the server.
 
+**403** once the assignment is `CLOSED`, same as submit.
+
 ### `POST /api/student/questions/{questionId}/submit` 🔒 student
 
 ```json
@@ -327,6 +370,8 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
   "completion": { "completedAt": "...", "score": 91, "attempts": 1 }
 }
 ```
+
+**403** once the assignment is `CLOSED` (its due date has passed).
 
 Each call stores a new attempt. A `Completion` row is created/updated once the
 answer is judged correct. The reference is never returned. `criteriaScores[].key`

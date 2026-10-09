@@ -103,6 +103,8 @@ model Question {
   id           String  @id @default(cuid())
   assignmentId String
   order        Int     @default(0)
+  type         String  @default("SHORT_ANSWER") // SHORT_ANSWER | KEY_IDEAS | ESSAY | MULTIPLE_CHOICE
+  options      String? // JSON, MULTIPLE_CHOICE only: [{ id, text, correct }] — `correct` is SERVER ONLY
   prompt       String
   reference    String // answer key OR rubric — SERVER ONLY, never sent to students
   criteria     String? // JSON: [{ key, weight, description }]

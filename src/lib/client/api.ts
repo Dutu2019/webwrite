@@ -10,6 +10,31 @@ export interface User {
   createdAt: string;
 }
 
+export interface Course {
+  id: string;
+  name: string;
+  description: string | null;
+  joinCode: string;
+  createdAt: string;
+  counts?: { enrollments: number; assignments: number };
+  teacher?: { name: string };
+}
+
+export type AssignmentStatus = "CREATED" | "POSTED" | "CLOSED";
+
+export interface Assignment {
+  id: string;
+  courseId: string;
+  title: string;
+  description: string | null;
+  published: boolean;
+  publishedAt: string | null;
+  dueAt: string | null;
+  status: AssignmentStatus;
+  createdAt: string;
+  counts?: { questions: number; completions: number };
+}
+
 interface AuthResponse {
   user: User;
   token: string;

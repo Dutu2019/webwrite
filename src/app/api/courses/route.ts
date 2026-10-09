@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
-import { handle, ok } from "@/lib/http";
+import { conflict, handle, ok } from "@/lib/http";
 import { courseDto } from "@/lib/dto";
 import { generateJoinCode } from "@/lib/constants";
 import { CourseCreateSchema } from "@/lib/validation/schemas";
@@ -24,14 +24,15 @@ export async function POST(req: NextRequest) {
     const user = await requireRole(req, "TEACHER");
     const body = CourseCreateSchema.parse(await req.json());
 
-    // Retry on the (astronomically unlikely) join-code collision.
+    // A chosen code must be free; a generated one is retried on the
+    // (astronomically unlikely) collision.
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const course = await prisma.course.create({
           data: {
             name: body.name.trim(),
             description: body.description?.trim() || null,
-            joinCode: generateJoinCode(),
+            joinCode: body.joinCode ?? generateJoinCode(),
             teacherId: user.id,
           },
           include: { _count: { select: { enrollments: true, assignments: true } } },
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
           e instanceof Prisma.PrismaClientKnownRequestError &&
           e.code === "P2002"
         ) {
+          if (body.joinCode) throw conflict("That class code is already in use");
           continue;
         }
         throw e;
