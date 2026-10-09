@@ -1,9 +1,7 @@
 """Small hosted Gemma decision API; not a MediaPipe inference backend."""
-import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 from time import perf_counter
 from typing import Annotated, Callable, ClassVar, Literal
 
@@ -12,17 +10,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
-from calibration import METHOD, Profile, fingerprint, make_scores, prediction_set
-
 DEFAULT_MODEL = "gemma-4-26b-a4b-it"
 MODELS = {DEFAULT_MODEL, "gemma-4-31b-it"}
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-SAMPLE_TEMPERATURE = 0.7
 MAX_BATCH_QUESTIONS = 32
-
-# Part of every calibration fingerprint. Bump whenever answer parsing, the request
-# payload, or vote scoring changes meaning, so existing profiles are rejected.
-SCORER_VERSION = 2
 
 PROMPT_TEMPLATE = "Required output shape: {shape}\nDecision input as JSON:\n{fields}"
 
@@ -59,10 +50,6 @@ class Question(BaseModel):
     def output_shape(self) -> str:
         return f'{{"{self.answer_field}": {self.value_shape}}}'
 
-    def labels(self) -> list:
-        """Every value the model may answer with."""
-        raise NotImplementedError
-
     def accepts(self, value) -> bool:
         raise NotImplementedError
 
@@ -77,9 +64,6 @@ class BooleanQuestion(Question):
 
     kind: Literal["boolean"]
     condition: Text
-
-    def labels(self):
-        return [False, True]
 
     def accepts(self, value):
         return type(value) is bool
@@ -102,9 +86,6 @@ class ChoiceQuestion(Question):
                 raise ValueError("Criteria keys must remain distinct after trimming whitespace.")
         return data
 
-    def labels(self):
-        return list(self.criteria)
-
     def accepts(self, value):
         return isinstance(value, str) and value in self.criteria
 
@@ -119,9 +100,6 @@ class ScoreQuestion(Question):
     kind: Literal["score"]
     instructions: Text
     rubric: list[Text] = Field(min_length=2, max_length=20)
-
-    def labels(self):
-        return list(range(len(self.rubric)))
 
     def accepts(self, value):
         return type(value) is int and 0 <= value < len(self.rubric)
@@ -141,7 +119,6 @@ class DecisionSettings(BaseModel):
 
     context: Context
     thinking: bool = False
-    mode: Literal["decision", "sample", "calibrated"] = "decision"
 
 
 class BooleanInput(BooleanQuestion, DecisionSettings):
@@ -208,23 +185,6 @@ class BatchInput(BaseModel):
 
 # --- Response models --------------------------------------------------------
 
-class Result(BaseModel):
-    kind: Literal["boolean", "choice", "score"]
-    value: bool | str | int | None
-    label: str | None = None
-    status: Literal["decided", "insufficient_information", "sampled", "abstained"]
-    model: str
-    latency_ms: float
-    model_version: str | None = None
-    calibration_status: Literal["uncalibrated", "scored", "calibrated"] = "uncalibrated"
-    prediction_set: list[bool | str | int] | None = None
-    scores: dict[str, float] | None = None
-    fingerprint: str | None = None
-    model_calls: int = 1
-    target_coverage: float | None = None
-    calibration_n: int | None = None
-
-
 class Answer(BaseModel):
     kind: Literal["boolean", "choice", "score"]
     value: bool | str | int | None
@@ -232,18 +192,23 @@ class Answer(BaseModel):
     status: Literal["decided", "insufficient_information"]
 
 
+class Result(Answer):
+    model: str
+    latency_ms: float
+    model_version: str | None = None
+
+
 class BatchResult(BaseModel):
     answers: dict[str, Answer]
     model: str
     model_version: str | None = None
     latency_ms: float
-    model_calls: int = 1
 
 
 # --- Prompting and parsing --------------------------------------------------
 
 def decision_prompt(data: DecisionSettings) -> str:
-    fields = data.model_dump(exclude={"thinking", "kind", "mode"})
+    fields = data.model_dump(exclude={"thinking", "kind"})
     return PROMPT_TEMPLATE.format(shape=data.output_shape(),
                                   fields=json.dumps(fields, ensure_ascii=False))
 
@@ -312,12 +277,12 @@ def elapsed_ms(start: float) -> float:
     return round((perf_counter() - start) * 1000, 2)
 
 
-def gemini_payload(prompt: str, thinking: bool, temperature: float, extra_tokens: int) -> dict:
+def gemini_payload(prompt: str, thinking: bool, extra_tokens: int) -> dict:
     return {
         "systemInstruction": {"parts": [{"text": SYSTEM}]},
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": temperature,
+            "temperature": 0,
             "maxOutputTokens": (4096 if thinking else 256) + extra_tokens,
             "thinkingConfig": {"thinkingLevel": "high" if thinking else "minimal"},
         },
@@ -343,7 +308,7 @@ async def call_gemini(client: httpx.AsyncClient, model: str, key: str, payload: 
 
 
 async def generate(client: httpx.AsyncClient, prompt: str, parse: Callable[[str], object], *,
-                   thinking: bool, temperature: float = 0, extra_tokens: int = 0):
+                   thinking: bool, extra_tokens: int = 0):
     """Make one model call; return (parsed reply, model, model version, latency ms)."""
     key = os.getenv("GEMINI_API_KEY", "").strip()
     model = configured_model()
@@ -353,7 +318,7 @@ async def generate(client: httpx.AsyncClient, prompt: str, parse: Callable[[str]
         raise HTTPException(503, "GEMMA_MODEL must be gemma-4-26b-a4b-it or gemma-4-31b-it.")
 
     start = perf_counter()
-    payload = gemini_payload(prompt, thinking, temperature, extra_tokens)
+    payload = gemini_payload(prompt, thinking, extra_tokens)
     response = await call_gemini(client, model, key, payload)
     try:
         body = response.json()
@@ -364,11 +329,11 @@ async def generate(client: httpx.AsyncClient, prompt: str, parse: Callable[[str]
     return parsed, model, body.get("modelVersion"), elapsed_ms(start)
 
 
-async def decide(data: DecisionSettings, client: httpx.AsyncClient, temperature: float = 0) -> Result:
+async def decide(data: DecisionSettings, client: httpx.AsyncClient) -> Result:
     """Make one model call and return a validated decision."""
     (value, label), model, version, latency = await generate(
         client, decision_prompt(data), lambda text: parse_decision(text, data),
-        thinking=data.thinking, temperature=temperature)
+        thinking=data.thinking)
     return Result(
         kind=data.kind,
         value=value,
@@ -388,90 +353,6 @@ async def decide_batch(data: BatchInput, client: httpx.AsyncClient) -> BatchResu
     return BatchResult(answers=answers, model=model, model_version=version, latency_ms=latency)
 
 
-# --- Sampling and calibration -----------------------------------------------
-
-def sampling_settings(mode: str) -> tuple[int, Profile | None]:
-    """Read the sample count and, in calibrated mode, the conformal profile."""
-    try:
-        count = int(os.getenv("DECISION_SAMPLES", "5"))
-        if not 2 <= count <= 20:
-            raise ValueError("DECISION_SAMPLES must be between 2 and 20")
-        if mode != "calibrated":
-            return count, None
-        path = os.getenv("CALIBRATION_FILE")
-        if not path:
-            raise ValueError("Fit a profile and set CALIBRATION_FILE first")
-        return count, Profile.model_validate_json(Path(path).read_text(encoding="utf-8"))
-    except (ValueError, OSError) as error:
-        raise HTTPException(503, str(error)) from None
-
-
-async def decide_by_sampling(data: DecisionSettings, client: httpx.AsyncClient) -> Result:
-    """Score every label by vote frequency; with a profile, return a prediction set."""
-    count, profile = sampling_settings(data.mode)
-    model = configured_model()
-    signature = fingerprint({
-        "schema": data.model_dump(exclude={"context", "mode"}),
-        "model": model,
-        "samples": count,
-        "temperature": SAMPLE_TEMPERATURE,
-        "system": SYSTEM,
-        "prompt": PROMPT_TEMPLATE,
-        "output_shape": data.output_shape(),
-        "scorer_version": SCORER_VERSION,
-        "method": METHOD,
-    })
-    if profile and profile.fingerprint != signature:
-        raise HTTPException(409, "Calibration mismatch: model, question, prompt, scorer, "
-                                 "or sampling settings changed.")
-
-    start = perf_counter()
-    # Fixed-count sampling. Any error aborts the request and cancels the remaining
-    # calls; bad samples are never dropped or retried.
-    try:
-        async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(decide(data, client, temperature=SAMPLE_TEMPERATURE))
-                     for _ in range(count)]
-    except* HTTPException as errors:
-        raise errors.exceptions[0] from None
-    results = [task.result() for task in tasks]
-
-    versions = {r.model_version for r in results}
-    if len(versions) != 1:
-        raise HTTPException(409, "Model version changed during sampling; recalibrate.")
-    version = versions.pop()
-    if profile and profile.model_version != version:
-        raise HTTPException(409, "Model version differs from calibration; recalibrate.")
-
-    scores = make_scores(data.labels(), [r.value for r in results])
-    result = Result(
-        kind=data.kind,
-        value=None,
-        status="sampled",
-        model=model,
-        model_version=version,
-        latency_ms=elapsed_ms(start),
-        calibration_status="scored",
-        scores=scores,
-        fingerprint=signature,
-        model_calls=count,
-    )
-    if profile is None:
-        return result
-
-    selected = prediction_set(profile, scores)
-    value = selected[0] if len(selected) == 1 else None
-    return result.model_copy(update={
-        "value": value,
-        "label": None if value is None else data.describe(value),
-        "status": "abstained" if value is None else "decided",
-        "calibration_status": "calibrated",
-        "prediction_set": selected,
-        "target_coverage": 1 - profile.alpha,
-        "calibration_n": profile.n,
-    })
-
-
 # --- App --------------------------------------------------------------------
 
 def create_app(transport=None):
@@ -483,11 +364,10 @@ def create_app(transport=None):
 
     api = FastAPI(
         title="Gemma Decisions",
-        version="2.1.0",
+        version="3.0.0",
         lifespan=lifespan,
-        description="Hosted Gemma through the Gemini API. Validated JSON decisions; "
-                    "optional split-conformal prediction sets. Not MediaPipe or Jev-compatible. "
-                    "Conformal coverage is not a per-answer confidence probability.",
+        description="Hosted Gemma through the Gemini API. Validated JSON decisions, singly "
+                    "or as a batch of questions about one context. Not MediaPipe or Jev-compatible.",
     )
 
     @api.get("/", include_in_schema=False)
@@ -506,10 +386,7 @@ def create_app(transport=None):
 
     @api.post("/v1/decide", response_model=Result)
     async def decision(data: DecisionInput, request: Request):
-        client = request.app.state.client
-        if data.mode == "decision":
-            return await decide(data, client)
-        return await decide_by_sampling(data, client)
+        return await decide(data, request.app.state.client)
 
     @api.post("/v1/decide/batch", response_model=BatchResult)
     async def batch(data: BatchInput, request: Request):

@@ -28,14 +28,13 @@ $env:GEMMA_MODEL = 'gemma-4-31b-it'
 
 ## API
 
-There is one inference endpoint: **`POST /v1/decide`**. Set `kind` to select the decision:
+**`POST /v1/decide`** makes one decision about one context. Set `kind` to select the decision:
 
 - Boolean: `{ "kind": "boolean", "context": "...", "condition": "..." }`
 - Choice: `{ "kind": "choice", "context": "...", "instructions": "...", "criteria": { "key": "description", "other": "description" } }`
 - Score: `{ "kind": "score", "context": "...", "instructions": "...", "rubric": ["Low", "Medium", "High"] }`
 
-`mode` defaults to `decision` (one call). `sample` collects scores (five parallel calls by
-default). `calibrated` applies a fitted conformal profile to those sampled scores (also five calls).
+Each request is one model call at temperature 0.
 `GET /health` is a separate process/configuration check; it does not call or verify the model.
 The old `/v1/boolean`, `/v1/choice`, and `/v1/score` routes have been removed.
 
@@ -55,12 +54,12 @@ The old `/v1/boolean`, `/v1/choice`, and `/v1/score` routes have been removed.
 }
 ```
 
-Each question uses the same fields as the matching `/v1/decide` kind (without `context`,
-`thinking`, or `mode`). Names may use letters, digits, `_`, `-`, and `.`; at most 32
+Each question uses the same fields as the matching `/v1/decide` kind (without `context` or
+`thinking`). Names may use letters, digits, `_`, `-`, and `.`; at most 32
 questions. The response has `answers` keyed by name, each with `kind`, `value`, `label`,
 and `status` (`decided` or `insufficient_information`), plus `model`, `model_version`, and
 `latency_ms`. The reply must answer exactly the supplied questions with allowed values, or
-the whole batch fails with 502. Batch requests use decision mode only (no sampling).
+the whole batch fails with 502.
 
 All decisions accept `"thinking": true` (default false). Off maps to Gemini API
 `thinkingLevel: minimal`; on maps to `high`. Thinking gets a larger output budget.
@@ -93,7 +92,7 @@ For choices, `value` is an allowed key and `label` is its description. For score
 `value` is the **zero-based integer rubric index** and `label` is the level description.
 This is a discrete generated rating, not MediaPipe's probability-weighted expected score.
 Insufficient evidence returns `value: null` and `status: insufficient_information`.
-No confidence or probability is reported: generated judgments are not calibrated probabilities.
+No confidence or probability is reported: a generated judgment is not a probability.
 
 ## Behavior and limits
 
@@ -108,94 +107,20 @@ This is a localhost development API with no inbound authentication. Before publi
 add authentication, quotas, and appropriate deployment controls. Submitted context is sent
 to Google's Gemini API. No model requests or prompt logging occur at startup.
 
-## Split conformal prediction
+## No calibration, by design
 
-This implements split-conformal classification from
-[Angelopoulos & Bates](https://arxiv.org/abs/2107.07511). It does **not** implement
-temperature scaling or claim calibrated class probabilities. Hosted Gemma logprob
-availability has not been established, so the scorer works with generated labels only.
-The sampling scorer is an engineering choice within the general conformal framework,
-not a published Gemma-specific performance guarantee.
+There is no statistical calibration: that would need hundreds of hand-labelled answers
+for every question. Instead, the service keeps judgments honest by construction:
 
-For each input, take K independent API requests at temperature 0.7 (K defaults to 5).
-For candidate y, use `s(x,y) = 1 - count(y)/K`. A null response stays in the denominator;
-malformed/failed calls abort the request instead of being silently removed. Scores are
-nonconformity values (lower is better), **not probabilities of being correct**. Score-map
-keys are JSON encodings of labels: `true`, `false`, `0`, or `"billing"` including its quotes.
+- **Strict output.** The reply must be exactly the requested JSON with allowed values;
+  anything else is a 502, never a guessed or repaired answer.
+- **"Can't tell" stays visible.** `null` / `insufficient_information` is returned as-is,
+  so callers can treat it as "not yet" (the webwrite backend counts it as not completed).
+- **No silent retries.** A failed call fails; it is never re-asked until it looks good.
 
-On n labeled calibration examples, sort the scores assigned to the true labels and take
-rank `ceil((n+1)*(1-alpha))`, without interpolation. If rank exceeds n, use the maximum
-possible score, 1, to include every label. At inference include every label with score
-at most this threshold. Inclusive ties make small-K sampling conservative; all-label
-sets can be common, and increasing K costs more without guaranteeing better results.
-
-The standard coverage statement is **marginal** coverage of at least `1-alpha` under
-exchangeability, a fixed model/scoring procedure, and correct labels. It is not a guarantee
-for each class, individual input, or the subset receiving singleton decisions. The score
-rubric is treated as classification over its discrete levels, not a regression interval.
-Future inputs must resemble the calibration population. An alias updating silently can
-invalidate calibration even if the provider does not expose a changed model version.
-Failures must be tracked as failures/abstentions, not discarded to inflate reported quality.
-
-### Fit and evaluate
-
-1. Freeze the question, label descriptions/rubric, model, thinking setting, and sample count.
-2. Prepare separate calibration and test JSONL files with manually verified labels.
-   Each line has `id`, `request` (a `/v1/decide` payload), and `label`.
-   Boolean labels are JSON booleans; choices use keys; scores use zero-based integers.
-   Example format only, **not a calibration dataset**:
-
-   ```json
-   {"id":"cal-001","request":{"kind":"boolean","context":"I was billed twice for order 17.","condition":"The customer reports duplicate billing."},"label":true}
-   ```
-
-   Use one fixed schema per profile. Include representative hard and negative examples.
-   If 'insufficient evidence' is a ground-truth class, use a choice question with an
-   explicit unknown key; null is a model abstention, not a calibration label.
-   A few hundred examples is a useful starting point, not a mathematical requirement.
-   Do not tune prompts on these held-out files or reuse the test set for model selection.
-3. Start the server with your key, then collect calibration scores and fit:
-
-   ```powershell
-   .\.venv\Scripts\python.exe calibrate.py fit calibration.jsonl --profile profile.json --alpha 0.1
-   .\.venv\Scripts\python.exe calibrate.py evaluate test.jsonl --profile profile.json --report evaluation.json
-   ```
-
-   These commands make **5 model calls per row** by default, consuming API quota and any
-   applicable charges. There are no automatic retries. Evaluation reports coverage,
-   average set size, abstention rate, and singleton accuracy. It rejects overlapping
-   IDs/exact contexts; you must also keep paraphrases and related examples from leaking
-   across splits. Evaluate each failure explicitly; the CLI aborts rather than dropping it.
-4. Set the profile path in the server environment and restart:
-
-   ```powershell
-   $env:CALIBRATION_FILE = (Resolve-Path profile.json).Path
-   .\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
-   ```
-
-   Send the same question/schema with new context and `"mode": "calibrated"` to
-   `/v1/decide`. Response fields include `prediction_set`, `target_coverage`, and
-   `calibration_n`. `value` is returned only for singleton sets; empty/multiple sets
-   yield `status: abstained`.
-
-Without a profile, calibrated mode returns 503; it never silently falls back to an
-uncalibrated answer. Profile mismatches return 409. Profiles are bound to the exact
-question/settings, model, sample count, temperature, system prompt and prompt template,
-`SCORER_VERSION`, and reported model version. Only one profile is configured per server.
-Changing `DECISION_SAMPLES` (2–20), prompts, or model requires refitting. If you change
-answer parsing, the request payload, or vote scoring, bump `SCORER_VERSION` in `app.py`
-so old profiles are rejected. No calibrated profile is bundled, and no live model
-evaluation has been performed without an API key and labeled data.
-
-## Tests
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install pytest
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-Tests exercise the HTTP API with a simulated Google transport. They do not prove model
-accuracy, hosted availability, or actual inference latency; those need a real API key.
+Accuracy has not been measured. To check it for a question, hand-label a few dozen
+answers and compare them with what the service returns; reword unclear rubric levels
+or conditions if they disagree.
 
 References: [Google's hosted Gemma guide](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)
 and [MediaPipe Decision Maker concepts](https://developers.google.com/edge/mediapipe/solutions/decision/decision_maker/python).
