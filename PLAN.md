@@ -1,5 +1,9 @@
 # WeBWorK-style App with Text Answers — Backend Plan
 
+> Historical planning document. The grading layer was later changed from a local
+> stub/JEV to **hosted Gemma 4 via the Gemini API**; see `README.md` and
+> `API.md` for the current design.
+
 ## 1. Scope & assumptions
 
 **Responsibility:** the backend — database schema, auth/login API, business logic, and the HTTP API the

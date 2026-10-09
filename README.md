@@ -1,53 +1,35 @@
-# webwrite — WeBWorK-style app with text answers
+# webwrite — WeBWorK-style app with text answers (backend)
 
-A class-assignment app where teachers author text-answer assignments and
-students write free-text explanations that are graded against **key ideas**.
-Built with Next.js App Router (UI + **API routes**) + Prisma + SQLite, with JWT
-bearer-token auth.
+Backend for a class-assignment app where teachers author text-answer
+assignments and students submit free-text responses that are graded against
+criteria (completeness, elaboration, …). Built with Next.js App Router **API
+routes** + Prisma + SQLite, with JWT bearer-token auth.
 
-Answers are graded by the Gemma decision service in [`gemma/`](./gemma), which
-marks each key idea as `not_completed`, `in_progress`, or `included`, flags
-factually wrong answers, and supports live checking while the student types.
-Grading is pluggable: `GRADING_BACKEND=stub` switches to a deterministic local
-stub that runs fully offline (no API key or Python needed).
+The real grading model ("JEV") is **not** wired up yet — responses are scored by
+a deterministic local stub behind a pluggable interface.
 
 ## Stack
 
-| Concern    | Choice                                                  |
-| ---------- | ------------------------------------------------------- |
-| Framework  | Next.js 15 (App Router, TypeScript)                     |
-| Database   | SQLite via Prisma 6                                     |
-| Auth       | Stateless JWT bearer tokens (`jose`, HS256)             |
-| Passwords  | bcryptjs                                                |
-| Validation | zod                                                     |
-| Grading    | Hosted Gemma 4 via `gemma/` (Python), or a local stub   |
-| Tests      | `scripts/smoke.ts` (e2e) + Vitest (grading unit)        |
+| Concern    | Choice                                             |
+| ---------- | -------------------------------------------------- |
+| Framework  | Next.js 15 (App Router, TypeScript)                |
+| Database   | SQLite via Prisma 6                                |
+| Auth       | Stateless JWT bearer tokens (`jose`, HS256)        |
+| Passwords  | bcryptjs                                           |
+| Validation | zod                                                |
+| Tests      | `scripts/smoke.ts` (e2e) + Vitest (grading unit)   |
 
 ## Setup
 
 ```bash
 cp .env.example .env    # then set JWT_SECRET and GEMINI_API_KEY
 npm install
-npm run db:migrate      # create prisma/dev.db, apply migrations, generate the Prisma client
+npm run db:migrate      # create prisma/dev.db and apply migrations
 npm run db:seed         # load example teacher/students/courses/assignments
 npm run dev             # http://localhost:3000
 ```
 
-Grading also needs the Gemma service running; see
-[Grading with Gemma](#grading-with-gemma). To run without it, set
-`GRADING_BACKEND="stub"` in `.env`.
-
-One `.env` at the repo root configures everything: the Next.js app, Prisma, and
-the `gemma/` service all read it. It is git-ignored.
-
-| Variable           | Used by  | Notes                                                   |
-| ------------------ | -------- | ------------------------------------------------------- |
-| `DATABASE_URL`     | Prisma   | `file:./dev.db` (relative to `prisma/`)                 |
-| `JWT_SECRET`       | API      | Long random string for anything non-local               |
-| `GRADING_BACKEND`  | API      | `gemma` (default) or `stub` (offline)                   |
-| `GEMMA_BATCH_URL`  | API      | Defaults to `http://127.0.0.1:8000/v1/decide/batch`     |
-| `GEMINI_API_KEY`   | `gemma/` | From https://aistudio.google.com/apikey                 |
-| `GEMMA_MODEL`      | `gemma/` | Optional: `gemma-4-26b-a4b-it` (default) or `gemma-4-31b-it` |
+Copy `.env.example` to `.env` and set `JWT_SECRET` for anything non-local.
 
 ### Seed accounts (all password `password123`)
 
@@ -108,10 +90,12 @@ See "Gemma backend" in [`API.md`](./API.md) for response shapes, and
 | `npm run dev`       | Start the dev server                                |
 | `npm run build`     | Production build                                    |
 | `npm run start`     | Serve the production build                          |
-| `npm run db:migrate`| Create/apply a Prisma migration                     |
+| `npm run db:generate`| Generate the Prisma client (platform-aware engine) |
+| `npm run db:deploy` | Apply migrations to `DATABASE_URL`                  |
+| `npm run db:migrate`| Create a migration during development               |
 | `npm run db:seed`   | Seed example data                                   |
 | `npm run db:studio` | Prisma Studio (browse the DB)                       |
-| `npm run smoke`     | End-to-end API test (needs `npm run dev` and the Gemma service running, or `GRADING_BACKEND=stub`) |
+| `npm run smoke`     | End-to-end API test (needs `npm run dev` running)   |
 | `npm test`          | Vitest unit tests (grading stub)                    |
 
 ## Project layout
@@ -126,20 +110,19 @@ src/
     db.ts             # Prisma singleton
     auth.ts           # password hashing + JWT sign/verify
     guards.ts         # requireUser / requireRole / requireCourseOwner / assertEnrolled
-    http.ts           # error envelope + handler wrapper
+    errors.ts         # HttpError + status helpers (framework-free)
+    http.ts           # JSON responses + error envelope + handler wrapper
     dto.ts            # response mappers (strip reference/criteria/passwordHash)
-    client/           # browser API client + form validation
-    grading/
-      index.ts        # evaluate(): Gemma by default, stub if GRADING_BACKEND=stub
-      jevStub.ts      # offline heuristic grader
-      gemma.ts        # Gemma grader (one batch call per answer, cached)
-      question.ts     # load a gradable question; student-safe idea progress
+    grading/          # evaluate() + hardcoded jevStub
     validation/       # zod schemas
 gemma/                # Python service: hosted Gemma 4 decisions (see its README)
 prisma/
-  schema.prisma       # models
+  schema.prisma       # models (PostgreSQL)
+  migrations/         # SQL migrations
   seed.ts             # example data
-scripts/smoke.ts      # e2e smoke test
+scripts/
+  prisma-generate.mjs # platform-aware Prisma client generation
+  smoke.ts            # e2e smoke test
 ```
 
 See [`API.md`](./API.md) for the full endpoint reference.
@@ -153,19 +136,33 @@ See [`API.md`](./API.md) for the full endpoint reference.
   asserts those keys never leak.
 - **Authorization is per-request.** Every protected route re-checks the bearer
   token, role, course ownership, or enrollment. There is no client-supplied
-  trust; "Continue" is re-graded on the server.
-- **Grading is pluggable.** `src/lib/grading/index.ts` exports `evaluate()`,
-  which uses Gemma by default or the stub with `GRADING_BACKEND=stub`. A real JEV client
-  could be added the same way without changing call sites.
-- **Grading fails closed.** If grading is unavailable nothing is stored and the
-  attempt isn't consumed; an idea the model can't judge counts as not completed.
+  trust.
+- **Grading is pluggable.** `src/lib/grading/index.ts` exports `evaluate()`.
+  Today it calls `jevStub`; swapping in the real JEV client requires no changes
+  at call sites.
 - **Students only see published work** from courses they are actively enrolled
   in.
+
+## Deployment (Vercel)
+
+The repo is connected to Vercel, so pushing to `main` deploys automatically.
+Add these Environment Variables to the Vercel project (Production):
+
+- `DATABASE_URL` — your PostgreSQL connection string
+- `JWT_SECRET`
+- `GEMINI_API_KEY`
+- `GEMMA_MODEL` (optional)
+
+Then apply migrations with `npm run db:deploy` (from your machine, with the
+production `DATABASE_URL` in the environment). `prebuild` runs
+`scripts/prisma-generate.mjs`, so the correct Prisma client is always generated
+before `next build`.
 
 ## Windows ARM64 note
 
 Prisma's default Node-API query engine is an x64 native module that cannot load
-into ARM64 Node. The generator in `prisma/schema.prisma` therefore sets
-`engineType = "binary"`, which runs the engine as a separate x64 executable
-(Windows emulates x64). On x64/other platforms you can remove that line if you
-prefer the default library engine.
+into ARM64 Node. `prisma/schema.prisma` therefore sets `engineType = "binary"`,
+which runs the engine as a separate x64 executable (Windows emulates x64).
+`scripts/prisma-generate.mjs` removes that line when generating on any other
+platform — including Vercel's Linux build — so production uses the default
+engine.
