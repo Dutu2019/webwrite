@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const user = await requireRole(req, "STUDENT");
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
-    const { question, criteria } = await loadGradableQuestion(questionId, user.id);
+    const { question, criteria, choices } = await loadGradableQuestion(questionId, user.id);
 
     const last = await prisma.submission.findFirst({
       where: { questionId, studentId: user.id },
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       prompt: question.prompt,
       reference: question.reference,
       criteria,
+      choices,
       studentAnswer: answerText,
       attemptNumber,
     });
@@ -57,26 +58,33 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       },
     };
 
+    // The assignment is complete once every question has a correct attempt.
+    // Score: points-weighted average of the best score per question.
+    const questions = await prisma.question.findMany({
+      where: { assignmentId: question.assignmentId },
+      select: {
+        points: true,
+        submissions: { where: { studentId: user.id }, select: { score: true, isCorrect: true } },
+      },
+    });
+    const allCorrect = questions.every((q) => q.submissions.some((s) => s.isCorrect));
+    const totalPoints = questions.reduce((sum, q) => sum + q.points, 0) || 1;
+    const score =
+      questions.reduce((sum, q) => sum + q.points * Math.max(0, ...q.submissions.map((s) => s.score ?? 0)), 0) /
+      totalPoints;
+    const attempts = questions.reduce((sum, q) => sum + q.submissions.length, 0);
+
     let completion = await prisma.completion.findUnique({ where: completionWhere });
-    if (result.isCorrect) {
+    if (allCorrect) {
       completion = await prisma.completion.upsert({
         where: completionWhere,
-        update: {
-          completedAt: new Date(),
-          score: result.score,
-          attempts: attemptNumber,
-        },
-        create: {
-          assignmentId: question.assignmentId,
-          studentId: user.id,
-          score: result.score,
-          attempts: attemptNumber,
-        },
+        update: { score, attempts },
+        create: { assignmentId: question.assignmentId, studentId: user.id, score, attempts },
       });
     } else if (completion) {
       completion = await prisma.completion.update({
         where: { id: completion.id },
-        data: { attempts: attemptNumber },
+        data: { attempts },
       });
     }
 

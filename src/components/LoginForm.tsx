@@ -110,7 +110,7 @@ export default function LoginForm() {
   return (
     <div className="login-box">
       <h1 className="brand">WebWrite</h1>
-      <p className="tagline">Humanities homework, guided by Jev.</p>
+      <p className="tagline">Humanities homework, guided by Gemma.</p>
 
       <div className="role-switch" role="radiogroup" aria-label={isRegister ? "Register as" : "Log in as"}>
         {(["STUDENT", "TEACHER"] as const).map((r) => (

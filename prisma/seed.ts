@@ -162,6 +162,7 @@ async function main() {
       id: "q_h1",
       assignmentId: civil.id,
       order: 0,
+      type: "ESSAY",
       prompt:
         "Argue whether civil disobedience can be justified in a democracy.",
       reference: `RUBRIC (open-ended, no single answer):

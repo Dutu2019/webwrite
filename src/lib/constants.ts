@@ -2,6 +2,16 @@
 export const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const JOIN_CODE_LENGTH = 8;
 
+/**
+ * Question kinds the builder offers. Text types are graded against
+ * `reference`/`criteria`; MULTIPLE_CHOICE is marked exactly against its options.
+ */
+export const QUESTION_TYPES = ["SHORT_ANSWER", "KEY_IDEAS", "ESSAY", "MULTIPLE_CHOICE"] as const;
+export type QuestionType = (typeof QUESTION_TYPES)[number];
+
+/** Aggregate score (0–100) at or above which an answer counts as correct. */
+export const CORRECT_THRESHOLD = 80;
+
 /** Fallback criteria when a question doesn't define its own. */
 export const DEFAULT_CRITERIA = [
   {

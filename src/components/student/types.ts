@@ -1,0 +1,42 @@
+import type { QuestionType } from "@/lib/constants";
+
+export type IdeaStatus = "not_completed" | "in_progress" | "included";
+
+/** Per-idea progress from /check or /submit; `hint` is the teacher's nudge while missing. */
+export interface IdeaProgress {
+  label: string;
+  status: IdeaStatus;
+  hint: string | null;
+}
+
+/** What the feedback line under an answer is built from. */
+export interface Feedback {
+  ideas: IdeaProgress[];
+  isCorrect: boolean;
+  flaggedIncorrect: boolean;
+  feedback: string | null;
+}
+
+export interface Attempt {
+  id: string;
+  attemptNumber: number;
+  answerText: string;
+  score: number | null;
+  criteriaScores: { key: string; score: number; status?: IdeaStatus }[];
+  feedback: string | null;
+  isCorrect: boolean;
+  createdAt: string;
+}
+
+/** A question as GET /api/student/assignments/:id returns it (no answer key). */
+export interface StudentQuestion {
+  id: string;
+  order: number;
+  type: QuestionType;
+  prompt: string;
+  points: number;
+  ideas: { label: string }[];
+  options?: { id: string; text: string }[];
+  multipleAnswers?: boolean;
+  attempts: Attempt[]; // newest first
+}

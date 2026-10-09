@@ -30,6 +30,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     }
     await assertEnrolled(user.id, assignment.courseId);
 
+    // Remember the first open, for the teacher's "opened" count
+    await prisma.assignmentOpen.upsert({
+      where: { assignmentId_studentId: { assignmentId: assignment.id, studentId: user.id } },
+      update: {},
+      create: { assignmentId: assignment.id, studentId: user.id },
+    });
+
     const questionIds = assignment.questions.map((q) => q.id);
     const submissions = await prisma.submission.findMany({
       where: { studentId: user.id, questionId: { in: questionIds } },

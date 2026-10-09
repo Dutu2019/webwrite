@@ -22,10 +22,19 @@ export interface CriteriaScore {
   status: CriterionStatus;
 }
 
+/** One multiple-choice option. `correct` is SERVER ONLY. */
+export interface ChoiceOption {
+  id: string;
+  text: string;
+  correct: boolean;
+}
+
 export interface GradingInput {
   prompt: string;
   reference: string;
   criteria?: Criterion[] | null;
+  /** Present for multiple-choice questions; the answer is then the chosen option ids. */
+  choices?: ChoiceOption[] | null;
   studentAnswer: string;
   attemptNumber: number;
 }

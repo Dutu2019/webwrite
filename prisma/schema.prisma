@@ -1,7 +1,7 @@
 // WeBWorK-style app with text answers — relational schema (PostgreSQL).
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   // Windows ARM64: the default "library" engine is an x64 native module that
   // cannot load into ARM64 Node. The "binary" engine runs as a separate x64
   // executable (Windows emulates x64). scripts/prisma-generate.mjs removes this
@@ -23,12 +23,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  taughtCourses Course[]      @relation("CourseTeacher")
+  taughtCourses Course[]         @relation("CourseTeacher")
   enrollments   Enrollment[]
-  invitesSent   Invite[]      @relation("InviteSender")
-  invitesGot    Invite[]      @relation("InviteTarget")
+  invitesSent   Invite[]         @relation("InviteSender")
+  invitesGot    Invite[]         @relation("InviteTarget")
   submissions   Submission[]
   completions   Completion[]
+  opens         AssignmentOpen[]
 
   @@index([role])
 }
@@ -91,9 +92,10 @@ model Assignment {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   questions   Question[]
   completions Completion[]
+  opens       AssignmentOpen[]
 
   @@index([courseId])
 }
@@ -102,6 +104,8 @@ model Question {
   id           String  @id @default(cuid())
   assignmentId String
   order        Int     @default(0)
+  type         String  @default("SHORT_ANSWER") // SHORT_ANSWER | KEY_IDEAS | ESSAY | MULTIPLE_CHOICE
+  options      String? // JSON, MULTIPLE_CHOICE only: [{ id, text, correct }] — `correct` is SERVER ONLY
   prompt       String
   reference    String // answer key OR rubric — SERVER ONLY, never sent to students
   criteria     String? // JSON: [{ key, weight, description }]
@@ -139,6 +143,20 @@ model Completion {
   completedAt  DateTime @default(now())
   score        Float?
   attempts     Int      @default(0)
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId])
+}
+
+/// First time a student opened an assignment (for the teacher's "opened" count).
+model AssignmentOpen {
+  id           String   @id @default(cuid())
+  assignmentId String
+  studentId    String
+  openedAt     DateTime @default(now())
 
   assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   student    User       @relation(fields: [studentId], references: [id], onDelete: Cascade)

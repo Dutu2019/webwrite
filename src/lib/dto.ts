@@ -1,5 +1,6 @@
 import type { Assignment, Course, Question, Submission, User } from "@prisma/client";
 import { DEFAULT_CRITERIA } from "./constants";
+import type { ChoiceOption } from "./grading/types";
 
 export function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -52,6 +53,18 @@ export function courseDto(
   return dto;
 }
 
+export type AssignmentStatus = "CREATED" | "POSTED" | "CLOSED";
+
+/** CREATED until published; POSTED once published; CLOSED once its due date passes. */
+export function assignmentStatus(
+  a: Pick<Assignment, "published" | "dueAt">,
+  now = new Date(),
+): AssignmentStatus {
+  if (!a.published) return "CREATED";
+  if (a.dueAt && a.dueAt <= now) return "CLOSED";
+  return "POSTED";
+}
+
 export function assignmentDto(
   a: Pick<
     Assignment,
@@ -74,6 +87,7 @@ export function assignmentDto(
     published: a.published,
     publishedAt: a.publishedAt,
     dueAt: a.dueAt,
+    status: assignmentStatus(a),
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -85,29 +99,42 @@ export function teacherQuestionDto(q: Question) {
     id: q.id,
     assignmentId: q.assignmentId,
     order: q.order,
+    type: q.type,
     prompt: q.prompt,
     reference: q.reference,
     criteria: parseJson<unknown>(q.criteria, null),
+    options: parseJson<ChoiceOption[] | null>(q.options, null),
     points: q.points,
   };
 }
 
 /**
- * Student view of a question — deliberately strips `reference` and `criteria`
- * so the answer key never leaves the server. Only positional idea labels
- * ("Idea 1", …) are exposed, never the idea text.
+ * Student view of a question — deliberately strips `reference`, `criteria`
+ * and which options are correct, so the answer key never leaves the server.
+ * Only positional idea labels ("Idea 1", …) are exposed, never the idea text.
  */
 export function studentQuestionDto(
-  q: Pick<Question, "id" | "order" | "prompt" | "points" | "criteria">,
+  q: Pick<Question, "id" | "order" | "type" | "prompt" | "points" | "criteria" | "options">,
 ) {
-  const ideaCount =
-    parseJson<unknown[] | null>(q.criteria, null)?.length || DEFAULT_CRITERIA.length;
+  const choice = q.type === "MULTIPLE_CHOICE";
+  const ideaCount = choice
+    ? 0
+    : parseJson<unknown[] | null>(q.criteria, null)?.length || DEFAULT_CRITERIA.length;
+  const options = parseJson<ChoiceOption[] | null>(q.options, null);
   return {
     id: q.id,
     order: q.order,
+    type: q.type,
     prompt: q.prompt,
     points: q.points,
     ideas: Array.from({ length: ideaCount }, (_, i) => ({ label: `Idea ${i + 1}` })),
+    ...(choice && options
+      ? {
+          options: options.map((o) => ({ id: o.id, text: o.text })),
+          // Lets the UI use checkboxes instead of radio buttons, without saying which
+          multipleAnswers: options.filter((o) => o.correct).length > 1,
+        }
+      : {}),
   };
 }
 

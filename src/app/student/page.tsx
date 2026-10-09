@@ -1,5 +1,5 @@
-import Dashboard from "@/components/Dashboard";
+import StudentWorkspace from "@/components/student/StudentWorkspace";
 
 export default function StudentPage() {
-  return <Dashboard role="STUDENT" />;
+  return <StudentWorkspace />;
 }

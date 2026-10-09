@@ -1,14 +1,14 @@
 import type { Question } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { assertEnrolled } from "@/lib/guards";
-import { notFound } from "@/lib/http";
-import { parseJson } from "@/lib/dto";
+import { forbidden, notFound } from "@/lib/http";
+import { assignmentStatus, parseJson } from "@/lib/dto";
 import { DEFAULT_CRITERIA } from "@/lib/constants";
-import type { Criterion, GradingResult } from "./types";
+import type { ChoiceOption, Criterion, GradingResult } from "./types";
 
 /**
- * Load a question a student may answer (published, and they're enrolled),
- * plus the criteria it is graded against.
+ * Load a question a student may answer (published, not closed, and they're
+ * enrolled), plus the criteria it is graded against.
  */
 export async function loadGradableQuestion(questionId: string, studentId: string) {
   const question = await prisma.question.findUnique({
@@ -19,7 +19,16 @@ export async function loadGradableQuestion(questionId: string, studentId: string
     throw notFound("Question not found");
   }
   await assertEnrolled(studentId, question.assignment.courseId);
-  return { question, criteria: criteriaOf(question) };
+  if (assignmentStatus(question.assignment) === "CLOSED") {
+    throw forbidden("This assignment is closed");
+  }
+  return { question, criteria: criteriaOf(question), choices: choicesOf(question) };
+}
+
+/** The options of a multiple-choice question, or null for text questions. */
+export function choicesOf(question: Pick<Question, "type" | "options">): ChoiceOption[] | null {
+  if (question.type !== "MULTIPLE_CHOICE") return null;
+  return parseJson<ChoiceOption[] | null>(question.options, null);
 }
 
 export function criteriaOf(question: Pick<Question, "criteria">): Criterion[] {
