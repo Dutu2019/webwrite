@@ -354,25 +354,19 @@ is the teacher's criterion key and *is* visible to students, so use neutral keys
 
 ## Grading
 
-Grading lives behind `src/lib/grading/index.ts` → `evaluate(input)`. It uses the
-Gemma backend below by default; `GRADING_BACKEND=stub` switches to a
-deterministic offline stub (`jevStub`). Swapping in the real JEV model requires
-no changes at call sites.
+Grading lives behind `src/lib/grading/index.ts` → `evaluate(input) → GradingResult`
+and calls **hosted Gemma 4 through the Gemini API** directly from the Next.js
+backend (`src/lib/grading/gemma.ts`). There is no separate grading service.
 
-### Stub backend (`GRADING_BACKEND=stub`)
+Configure it with two server-only environment variables:
 
-The stub supports criterion keys `completeness`, `elaboration`, `clarity`, and
-`accuracy` (plus a few synonyms); unknown keys fall back to a generic
-length/reasoning heuristic. The aggregate is a weighted average (0–100) with a
-small bonus for later attempts, and `isCorrect` is `score >= 80`. Criterion
-statuses come from the score (80+ `included`, 40+ `in_progress`).
+- `GEMINI_API_KEY` — required; get one at https://aistudio.google.com/apikey
+- `GEMMA_MODEL` — optional; `gemma-4-26b-a4b-it` (default) or `gemma-4-31b-it`
 
-### Gemma backend (default)
+### Criteria are the grading rubric
 
-Grades through the Gemma decision service in `gemma/` (run it separately; set
-`GEMMA_BATCH_URL` if it isn't on `127.0.0.1:8000`). Each criterion is a **key idea**:
-`description` is the idea the answer must contain (server-only) and optional `hint`
-is a teacher-written nudge shown to students while the idea isn't included:
+For each assignment question the professor supplies a list of `criteria`. Each
+criterion is one **key idea** the answer must contain:
 
 ```json
 { "key": "idea1", "weight": 1,
@@ -380,11 +374,48 @@ is a teacher-written nudge shown to students while the idea isn't included:
   "hint": "What attracts the shared electrons, and to what?" }
 ```
 
-All criteria plus an "is anything stated incorrectly?" check are answered in one
-model call. Each criterion gets `not_completed` / `in_progress` / `included`
-(scores 0 / 50 / 100). `isCorrect` requires every criterion `included` and no
-incorrect statement; there is no attempt bonus. Identical answers are cached in
-memory, so re-checking unchanged text and the final submit don't re-call the
-model. If the service is down, check and submit return **503
-`GRADING_UNAVAILABLE`** and nothing is stored; overlong input returns **422
-`GRADING_INPUT_INVALID`**.
+`description` is the idea the model checks for (server-only, never sent to the
+student) and optional `hint` is a teacher-written nudge shown while the idea
+isn't included yet.
+
+### How an answer is scored
+
+Every criterion plus an "is anything stated incorrectly?" check are sent to Gemma
+in **one** batched model call at temperature 0. Each criterion is scored on an
+ordered three-level rubric:
+
+| Level           | Score | Meaning                                       |
+| --------------- | ----- | --------------------------------------------- |
+| `not_completed` | 0     | the idea is missing or stated incorrectly     |
+| `in_progress`   | 50    | touched on but vague, incomplete, or implied  |
+| `included`      | 100   | stated clearly and correctly                  |
+
+`score` is the weighted average (0–100) and `isCorrect` requires every criterion
+`included` **and** no factually incorrect statement; there is no attempt bonus.
+A `null` / `insufficient_information` answer counts as `not_completed`. The reply
+must be exactly the requested JSON with allowed values — malformed, truncated, or
+blocked output is rejected, never repaired.
+
+### Endpoints
+
+- `POST /api/student/questions/{id}/check` grades the current text and returns
+  per-idea progress (`ideas: [{ label, status, hint }]`); nothing is stored.
+- `POST /api/student/questions/{id}/submit` re-grades server-side and records the
+  attempt, returning the same `criteriaScores` plus `ideas`, `flaggedIncorrect`,
+  `isCorrect`, and `feedback`.
+
+Identical inputs are cached in memory, so re-checking unchanged text and the
+final submit don't re-call the model.
+
+### Errors
+
+| HTTP | code                    | Cause                                             |
+| ---- | ----------------------- | ------------------------------------------------- |
+| 503  | `GRADING_UNAVAILABLE`   | `GEMINI_API_KEY` missing or `GEMMA_MODEL` unknown |
+| 502  | `GRADING_UNREACHABLE`   | could not reach the Gemini API                    |
+| 502  | `GRADING_AUTH`          | Gemini rejected the key or model access           |
+| 502  | `GRADING_UPSTREAM`      | Gemini returned another error status              |
+| 502  | `GRADING_INVALID`       | blocked/incomplete/unparseable model reply        |
+| 504  | `GRADING_TIMEOUT`       | Gemini did not respond in time                    |
+| 429  | `GRADING_QUOTA`         | Gemini quota or rate limit reached                |
+| 422  | `GRADING_INPUT_INVALID` | overly long input or no criteria                  |

@@ -1,17 +1,16 @@
-// WeBWorK-style app with text answers — relational schema (SQLite).
-// Portable to Postgres: swap provider, and turn String role/status into enums
-// and Text JSON fields into Json columns.
+// WeBWorK-style app with text answers — relational schema (PostgreSQL).
 
 generator client {
   provider = "prisma-client-js"
   // Windows ARM64: the default "library" engine is an x64 native module that
   // cannot load into ARM64 Node. The "binary" engine runs as a separate x64
-  // executable (Windows emulates x64), which works on this machine.
+  // executable (Windows emulates x64). scripts/prisma-generate.mjs removes this
+  // line when building anywhere else (including Vercel).
   engineType = "binary"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -2,9 +2,6 @@
 export const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export const JOIN_CODE_LENGTH = 8;
 
-/** Aggregate score (0–100) at or above which an answer counts as correct. */
-export const CORRECT_THRESHOLD = 80;
-
 /** Fallback criteria when a question doesn't define its own. */
 export const DEFAULT_CRITERIA = [
   {
