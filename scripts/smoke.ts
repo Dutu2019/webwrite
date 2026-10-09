@@ -11,6 +11,10 @@ import assert from "node:assert/strict";
 const BASE = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
 const stamp = Date.now();
 
+// Grading calls hosted Gemma via the Gemini API; these statuses mean "grading
+// could not run here" (no key / upstream failure), which the suite tolerates.
+const GRADING_ERRORS = new Set<number>([429, 502, 503, 504]);
+
 interface Res {
   status: number;
   data: any;
@@ -247,7 +251,27 @@ async function main() {
     teacherDetail.data,
   );
 
+  // --- live check (grades without storing an attempt) ----------------------
+  // Grading calls hosted Gemma via the Gemini API. If no key is configured (or
+  // the upstream call fails), the route returns 502/503/504 — treated as a skip.
+  const liveCheck = await call("POST", `/api/student/questions/${questionId}/check`, {
+    token: studentToken,
+    body: {
+      answerText:
+        "Gravity accelerates the ball, so I use the free-fall relation to find the time.",
+    },
+  });
+  if (liveCheck.status === 200) {
+    check("live check returns per-idea progress", Array.isArray(liveCheck.data.ideas), liveCheck.data);
+    assertNoKeys(liveCheck.data, ["reference", "criteria"]);
+  } else if (GRADING_ERRORS.has(liveCheck.status)) {
+    console.log(`  ~ live check skipped (grading ${liveCheck.status} ${liveCheck.data?.error?.code ?? ""})`);
+  } else {
+    check("live check -> 200 or grading error", false, liveCheck.data);
+  }
+
   // --- submit an answer -----------------------------------------------------
+  let graded = false;
   const submit = await call("POST", `/api/student/questions/${questionId}/submit`, {
     token: studentToken,
     body: {
@@ -255,26 +279,38 @@ async function main() {
         "The ball falls under gravity so I use t = sqrt(2h/g). Plugging in h = 20 gives t = sqrt(40/9.8), which is about 2.02 seconds. This uses the free-fall relation because the ball starts from rest.",
     },
   });
-  check("submit answer -> 201", submit.status === 201, submit.data);
-  check("submit returns score", typeof submit.data.score === "number", submit.data);
-  check("submit returns criteriaScores", Array.isArray(submit.data.criteriaScores), submit.data);
-  check("submit returns feedback", typeof submit.data.feedback === "string", submit.data);
-  check(
-    "submit never returns a reference key",
-    !("reference" in submit.data) && !("reference" in submit.data.submission),
-    submit.data,
-  );
-  assertNoKeys(submit.data, ["reference", "criteria"]);
+  if (submit.status === 201) {
+    graded = true;
+    check("submit answer -> 201", true);
+    check("submit returns score", typeof submit.data.score === "number", submit.data);
+    check("submit returns criteriaScores", Array.isArray(submit.data.criteriaScores), submit.data);
+    check("submit returns feedback", typeof submit.data.feedback === "string", submit.data);
+    check("submit returns per-idea progress", Array.isArray(submit.data.ideas), submit.data);
+    check(
+      "submit never returns a reference key",
+      !("reference" in submit.data) && !("reference" in submit.data.submission),
+      submit.data,
+    );
+    assertNoKeys(submit.data, ["reference", "criteria"]);
+  } else if (GRADING_ERRORS.has(submit.status)) {
+    console.log(`  ~ submit grading skipped (grading ${submit.status} ${submit.data?.error?.code ?? ""})`);
+  } else {
+    check("submit answer -> 201 or grading error", false, submit.data);
+  }
 
-  const resubmit = await call("POST", `/api/student/questions/${questionId}/submit`, {
-    token: studentToken,
-    body: { answerText: "t = sqrt(2h/g) = sqrt(40/9.8) = 2.02 s because of gravity." },
-  });
-  check(
-    "second attempt increments attemptNumber",
-    resubmit.status === 201 && resubmit.data.attemptNumber === 2,
-    resubmit.data,
-  );
+  if (graded) {
+    const resubmit = await call("POST", `/api/student/questions/${questionId}/submit`, {
+      token: studentToken,
+      body: { answerText: "t = sqrt(2h/g) = sqrt(40/9.8) = 2.02 s because of gravity." },
+    });
+    if (resubmit.status === 201) {
+      check("second attempt increments attemptNumber", resubmit.data.attemptNumber === 2, resubmit.data);
+    } else if (GRADING_ERRORS.has(resubmit.status)) {
+      console.log(`  ~ resubmit grading skipped (grading ${resubmit.status} ${resubmit.data?.error?.code ?? ""})`);
+    } else {
+      check("second attempt -> 201 or grading error", false, resubmit.data);
+    }
+  }
 
   // --- teacher submissions report ------------------------------------------
   const report = await call("GET", `/api/assignments/${assignmentId}/submissions`, {
@@ -282,7 +318,10 @@ async function main() {
   });
   check("teacher submissions -> 200", report.status === 200, report.data);
   const row = report.data.students.find((s: any) => s.student.id === studentId);
-  check("report includes the student's submissions", !!row && row.submissions.length === 2, report.data);
+  check("report includes the student", !!row, report.data);
+  if (graded) {
+    check("report includes 2 stored attempts", row.submissions.length === 2, report.data);
+  }
 
   // --- student result -------------------------------------------------------
   const result = await call("GET", `/api/student/assignments/${assignmentId}/result`, {

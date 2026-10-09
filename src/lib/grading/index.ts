@@ -11,13 +11,12 @@ export type {
   GradingInput,
   GradingResult,
 } from "./types";
+export { decideBatch, gradeWithGemma } from "./gemma";
+export type { Question, Answer } from "./gemma";
 
 /**
- * Grade a single text answer. This is the only entry point call sites use.
- *
- * Grades through the Gemma decision service by default; `GRADING_BACKEND=stub`
- * uses a deterministic offline stub instead. Swapping backends needs no call
- * site changes.
+ * Grade a single text answer against the question's criteria using hosted
+ * Gemma 4 (via the Gemini API). This is the only entry point call sites use.
  */
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
   // Multiple choice is marked exactly; only free text goes to the model
