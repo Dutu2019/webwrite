@@ -271,13 +271,40 @@ Published assignments in enrolled courses.
   "questions": [
     {
       "id": "...", "order": 0, "prompt": "...", "points": 1,
+      "ideas": [ { "label": "Idea 1" }, { "label": "Idea 2" } ],
       "attempts": [ { id, questionId, attemptNumber, answerText, score, criteriaScores, feedback, isCorrect, createdAt } ]
     }
   ]
 }
 ```
 
-`questions[]` intentionally **omits** `reference` and `criteria`.
+`questions[]` intentionally **omits** `reference` and `criteria`; `ideas` only has
+positional labels, one per criterion, never the idea text.
+
+### `POST /api/student/questions/{questionId}/check` 🔒 student
+
+Live check while the student writes (the frontend should call it after typing
+pauses). Same body as submit. Grades the current text but **stores nothing and
+does not count as an attempt**.
+
+**200**:
+
+```json
+{
+  "ideas": [
+    { "label": "Idea 1", "status": "in_progress", "hint": "What attracts the shared electrons?" },
+    { "label": "Idea 2", "status": "included", "hint": null }
+  ],
+  "flaggedIncorrect": false,
+  "feedback": "What attracts the shared electrons?",
+  "isCorrect": false
+}
+```
+
+`status` is `not_completed`, `in_progress`, or `included`. `hint` is the teacher's
+criterion hint, shown only while that idea isn't included. `flaggedIncorrect` means
+the answer states something wrong; it blocks completion. Enable "Continue" when
+`isCorrect` is true, then call submit, which re-grades on the server.
 
 ### `POST /api/student/questions/{questionId}/submit` 🔒 student
 
@@ -292,7 +319,9 @@ Published assignments in enrolled courses.
   "submission": { "id", "questionId", "attemptNumber", "answerText", "score", "criteriaScores", "feedback", "isCorrect", "createdAt" },
   "attemptNumber": 1,
   "score": 91,
-  "criteriaScores": [ { "key": "completeness", "score": 100, "weight": 0.6 } ],
+  "criteriaScores": [ { "key": "completeness", "score": 100, "weight": 0.6, "status": "included" } ],
+  "ideas": [ { "label": "Idea 1", "status": "included", "hint": null } ],
+  "flaggedIncorrect": false,
   "feedback": "…guiding hint, never the answer…",
   "isCorrect": true,
   "completion": { "completedAt": "...", "score": 91, "attempts": 1 }
@@ -300,7 +329,9 @@ Published assignments in enrolled courses.
 ```
 
 Each call stores a new attempt. A `Completion` row is created/updated once the
-answer is judged correct (`score >= 80`). The reference is never returned.
+answer is judged correct. The reference is never returned. `criteriaScores[].key`
+is the teacher's criterion key and *is* visible to students, so use neutral keys
+(e.g. `idea1`) for key-idea questions.
 
 ### `GET /api/student/assignments/{id}/result` 🔒 student
 
@@ -330,3 +361,25 @@ unknown keys fall back to a generic length/reasoning heuristic. The aggregate is
 a weighted average (0–100) with a small bonus for later attempts, and
 `isCorrect` is `score >= 80`. Swapping in the real JEV model requires no changes
 at call sites.
+
+### Gemma backend (`GRADING_BACKEND=gemma`)
+
+Grades through the Gemma decision service in `gemma/` (run it separately; set
+`GEMMA_BATCH_URL` if it isn't on `127.0.0.1:8000`). Each criterion is a **key idea**:
+`description` is the idea the answer must contain (server-only) and optional `hint`
+is a teacher-written nudge shown to students while the idea isn't included:
+
+```json
+{ "key": "idea1", "weight": 1,
+  "description": "Both nuclei (protons) are attracted to the shared electrons between them.",
+  "hint": "What attracts the shared electrons, and to what?" }
+```
+
+All criteria plus an "is anything stated incorrectly?" check are answered in one
+model call. Each criterion gets `not_completed` / `in_progress` / `included`
+(scores 0 / 50 / 100). `isCorrect` requires every criterion `included` and no
+incorrect statement; there is no attempt bonus. Identical answers are cached in
+memory, so re-checking unchanged text and the final submit don't re-call the
+model. If the service is down, check and submit return **503
+`GRADING_UNAVAILABLE`** and nothing is stored; overlong input returns **422
+`GRADING_INPUT_INVALID`**.

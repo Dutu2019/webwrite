@@ -157,10 +157,12 @@ export function jevStub(input: GradingInput): GradingResult {
 
   const criteriaScores: CriteriaScore[] = criteria.map((c) => {
     const evaluator = EVALUATORS[c.key.toLowerCase()] ?? generic;
+    const score = evaluator(studentAnswer, reference);
     return {
       key: c.key,
-      score: evaluator(studentAnswer, reference),
+      score,
       weight: c.weight ?? 1,
+      status: score >= 80 ? "included" : score >= 40 ? "in_progress" : "not_completed",
     };
   });
 
@@ -181,6 +183,7 @@ export function jevStub(input: GradingInput): GradingResult {
     score,
     criteriaScores,
     isCorrect: score >= 80,
+    flaggedIncorrect: false,
     feedback,
   };
 }

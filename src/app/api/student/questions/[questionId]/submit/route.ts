@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { assertEnrolled, requireRole } from "@/lib/guards";
-import { handle, notFound, ok } from "@/lib/http";
-import { parseJson, studentSubmissionDto } from "@/lib/dto";
-import { evaluate, type Criterion } from "@/lib/grading";
-import { DEFAULT_CRITERIA } from "@/lib/constants";
+import { requireRole } from "@/lib/guards";
+import { handle, ok } from "@/lib/http";
+import { studentSubmissionDto } from "@/lib/dto";
+import { evaluate } from "@/lib/grading";
+import { ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
 import { SubmitSchema } from "@/lib/validation/schemas";
 
 interface Ctx {
@@ -12,33 +12,22 @@ interface Ctx {
 }
 
 /**
- * Submit a text answer for one question. Grades via the pluggable grading
- * layer and stores every attempt. The reference/rubric is never returned.
+ * Submit a text answer for one question ("Continue"). Grades via the pluggable
+ * grading layer — re-checked here, never trusted from the client — and stores
+ * every attempt. The reference/rubric is never returned.
  */
 export async function POST(req: NextRequest, { params }: Ctx) {
   return handle(async () => {
     const user = await requireRole(req, "STUDENT");
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
-
-    const question = await prisma.question.findUnique({
-      where: { id: questionId },
-      include: { assignment: true },
-    });
-    if (!question || !question.assignment.published) {
-      throw notFound("Question not found");
-    }
-    await assertEnrolled(user.id, question.assignment.courseId);
+    const { question, criteria } = await loadGradableQuestion(questionId, user.id);
 
     const last = await prisma.submission.findFirst({
       where: { questionId, studentId: user.id },
       orderBy: { attemptNumber: "desc" },
     });
     const attemptNumber = (last?.attemptNumber ?? 0) + 1;
-
-    const criteria =
-      parseJson<Criterion[] | null>(question.criteria, null) ??
-      DEFAULT_CRITERIA.map((c) => ({ ...c }));
 
     const result = await evaluate({
       prompt: question.prompt,
@@ -97,6 +86,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         attemptNumber,
         score: result.score,
         criteriaScores: result.criteriaScores,
+        ideas: ideaProgress(result, criteria),
+        flaggedIncorrect: result.flaggedIncorrect,
         feedback: result.feedback,
         isCorrect: result.isCorrect,
         completion: completion

@@ -37,6 +37,7 @@ export const CriterionSchema = z.object({
   key: z.string().min(1).max(64),
   weight: z.number().min(0).max(1).default(1),
   description: z.string().max(500).optional(),
+  hint: z.string().max(500).optional(),
 });
 
 export const QuestionInputSchema = z.object({

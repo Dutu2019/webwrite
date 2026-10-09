@@ -5,8 +5,10 @@ assignments and students submit free-text responses that are graded against
 criteria (completeness, elaboration, …). Built with Next.js App Router **API
 routes** + Prisma + SQLite, with JWT bearer-token auth.
 
-The real grading model ("JEV") is **not** wired up yet — responses are scored by
-a deterministic local stub behind a pluggable interface.
+The real grading model ("JEV") is **not** wired up yet. By default responses are
+scored by a deterministic local stub behind a pluggable interface; set
+`GRADING_BACKEND=gemma` to grade key ideas through the Gemma decision service in
+`gemma/` instead (see "Gemma backend" in [`API.md`](./API.md)).
 
 ## Stack
 
