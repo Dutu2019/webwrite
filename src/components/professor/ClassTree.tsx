@@ -7,7 +7,8 @@ export type CourseNode = Course & { assignments: Assignment[] };
 
 /**
  * Left sidebar: each class, with its assignments nested underneath.
- * A class name opens the class; an assignment name opens its questions page.
+ * A class name opens the class; an assignment name goes to `assignmentHref`.
+ * Shared by the professor and student workspaces.
  */
 export default function ClassTree({
   courses,
@@ -16,6 +17,8 @@ export default function ClassTree({
   onToggle,
   onOpenCourse,
   onNewClass,
+  newClassLabel,
+  assignmentHref,
 }: {
   courses: CourseNode[];
   selectedCourseId: string | null;
@@ -23,12 +26,14 @@ export default function ClassTree({
   onToggle: (courseId: string) => void;
   onOpenCourse: (courseId: string) => void;
   onNewClass: () => void;
+  newClassLabel: string;
+  assignmentHref: (a: Assignment) => string;
 }) {
   return (
     <nav className="tree" aria-label="Your classes">
       <div className="tree-header">
         <h2>Classes</h2>
-        <button type="button" className="tree-add" onClick={onNewClass} aria-label="Create class" title="Create class">+</button>
+        <button type="button" className="tree-add" onClick={onNewClass} aria-label={newClassLabel} title={newClassLabel}>+</button>
       </div>
 
       {courses.length === 0 && <p className="tree-empty">No classes yet.</p>}
@@ -59,7 +64,7 @@ export default function ClassTree({
                   {c.assignments.length === 0 && <li className="tree-empty">No assignments</li>}
                   {c.assignments.map((a) => (
                     <li key={a.id} className="tree-leaf-row">
-                      <Link className="tree-leaf" href={`/teacher/assignments/${a.id}`}>
+                      <Link className="tree-leaf" href={assignmentHref(a)}>
                         <span className={`status-dot status-${a.status.toLowerCase()}`} aria-hidden="true" />
                         <span className="tree-leaf-title">{a.title}</span>
                       </Link>

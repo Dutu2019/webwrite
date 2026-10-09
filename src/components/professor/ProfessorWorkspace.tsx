@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, logout, type Assignment, type Course } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
 import Modal from "../Modal";
+import SortButton, { sortByDueDate, type SortOrder } from "../SortButton";
 import AssignmentCard from "./AssignmentCard";
 import AssignmentForm from "./AssignmentForm";
 import ClassForm from "./ClassForm";
@@ -17,17 +18,6 @@ type Dialog =
   | { kind: "class"; course?: Course }
   | { kind: "assignment"; assignment?: Assignment }
   | null;
-
-type SortOrder = "latest" | "soonest";
-
-/** Sort by due date in either direction; assignments without one always go last. */
-function sortByDueDate(list: Assignment[], order: SortOrder) {
-  return [...list].sort((a, b) => {
-    if (!a.dueAt || !b.dueAt) return Number(!a.dueAt) - Number(!b.dueAt);
-    const diff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-    return order === "soonest" ? diff : -diff;
-  });
-}
 
 export default function ProfessorWorkspace() {
   const router = useRouter();
@@ -107,7 +97,7 @@ export default function ProfessorWorkspace() {
   function onAssignmentSaved(assignment: Assignment) {
     updateCourseAssignments(assignment.courseId, (list) =>
       list.some((a) => a.id === assignment.id)
-        ? list.map((a) => (a.id === assignment.id ? assignment : a))
+        ? list.map((a) => (a.id === assignment.id ? { ...a, ...assignment } : a))
         : [...list, assignment],
     );
     setDialog(null);
@@ -115,7 +105,9 @@ export default function ProfessorWorkspace() {
   }
 
   function onAssignmentChanged(assignment: Assignment) {
-    updateCourseAssignments(assignment.courseId, (list) => list.map((a) => (a.id === assignment.id ? assignment : a)));
+    updateCourseAssignments(assignment.courseId, (list) =>
+      list.map((a) => (a.id === assignment.id ? { ...a, ...assignment } : a)),
+    );
   }
 
   function updateCourseAssignments(courseId: string, fn: (list: Assignment[]) => Assignment[]) {
@@ -149,6 +141,8 @@ export default function ProfessorWorkspace() {
         onToggle={toggle}
         onOpenCourse={openCourse}
         onNewClass={() => setDialog({ kind: "class" })}
+        newClassLabel="Create class"
+        assignmentHref={(a) => `/teacher/assignments/${a.id}`}
       />
 
       <main className="prof-main">
@@ -194,19 +188,7 @@ export default function ProfessorWorkspace() {
               </div>
             ) : (
               <>
-              <div className="stack-toolbar">
-                <button
-                  type="button"
-                  className="sort-btn"
-                  aria-label={`Sorted by due date, ${sortOrder === "soonest" ? "soonest" : "latest"} first. Click to reverse.`}
-                  onClick={() => setSortOrder((o) => (o === "latest" ? "soonest" : "latest"))}
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                    <path d="M8 4v16m0 0-4-4m4 4 4-4M16 20V4m0 0-4 4m4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Due date: {sortOrder === "soonest" ? "soonest first" : "latest first"}
-                </button>
-              </div>
+              <SortButton order={sortOrder} onChange={setSortOrder} />
               <div className="assignment-stack">
                 {selectedCourse.assignments.map((a) => (
                   <AssignmentCard
