@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type Assignment } from "@/lib/client/api";
+import { api, ApiError, hasSession, type Assignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
 import MathText from "../MathText";
 import Modal from "../Modal";
@@ -49,7 +49,8 @@ export default function AssignmentView({ assignmentId }: { assignmentId: string 
   }
 
   useEffect(() => {
-    if (!user) return;
+    // Fetched alongside the session check rather than after it; nothing renders until the user is confirmed
+    if (!hasSession()) return;
     api<Detail>(`/api/student/assignments/${assignmentId}`)
       .then((d) => {
         setDetail(d);
@@ -58,7 +59,7 @@ export default function AssignmentView({ assignmentId }: { assignmentId: string 
       .catch((err) =>
         setError(err instanceof ApiError && err.status === 404 ? "This assignment isn't available." : "Couldn't load the assignment."),
       );
-  }, [user, assignmentId]);
+  }, [assignmentId]);
 
   if (!user) return <main className="dash"><p className="dash-muted">Loading…</p></main>;
 

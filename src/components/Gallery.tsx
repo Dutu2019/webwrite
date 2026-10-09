@@ -36,6 +36,8 @@ const BUBBLES: Bubble[] = [
 /** Left column: library photos crossfading in a loop, edged by a static wave. */
 export default function Gallery({ images }: { images: string[] }) {
   const [current, setCurrent] = useState(0);
+  // Furthest slide shown so far. Photos load one slide ahead of it rather than all at once.
+  const [reached, setReached] = useState(0);
 
   useEffect(() => {
     if (images.length < 2) return;
@@ -43,13 +45,15 @@ export default function Gallery({ images }: { images: string[] }) {
     return () => clearInterval(timer);
   }, [images.length]);
 
+  useEffect(() => setReached((r) => Math.max(r, current)), [current]);
+
   return (
     <aside className="gallery" aria-hidden="true">
       {images.map((src, i) => (
         <div
           key={src}
           className={`slide${i === current ? " is-active" : ""}`}
-          style={{ backgroundImage: `url("${src}")` }}
+          style={i <= reached + 1 ? { backgroundImage: `url("${src}")` } : undefined}
         />
       ))}
 

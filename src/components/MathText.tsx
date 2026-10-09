@@ -1,8 +1,27 @@
 "use client";
 
-import katex from "katex";
-import { Fragment, useMemo } from "react";
+import "katex/dist/katex.min.css";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { autoMath } from "./autoMath";
+
+type Katex = typeof import("katex").default;
+
+// KaTeX is large, so it loads in its own chunk instead of delaying the page's
+// first render. The download starts as soon as this module loads (in the
+// browser), so it is normally ready before the page's data arrives.
+let katexLib: Katex | null = null;
+const katexReady: Promise<Katex> | null =
+  typeof window === "undefined"
+    ? null
+    : import("katex").then((m) => (katexLib = m.default));
+
+function useKatex(): Katex | null {
+  const [lib, setLib] = useState(katexLib);
+  useEffect(() => {
+    if (!lib) katexReady?.then(setLib);
+  }, [lib]);
+  return lib;
+}
 
 /**
  * Text with LaTeX math rendered by KaTeX. Delimiters:
@@ -42,12 +61,16 @@ export function parseMathWithAuto(text: string): Segment[] {
 export const hasMath = (text: string) => parseMathWithAuto(text).some((s) => s.kind === "math");
 
 export default function MathText({ text, inline = false }: { text: string; inline?: boolean }) {
+  const katex = useKatex();
   const segments = useMemo(() => parseMathWithAuto(text), [text]);
   return (
     <>
       {segments.map((s, i) =>
         s.kind === "text" ? (
           <Fragment key={i}>{s.value}</Fragment>
+        ) : !katex ? (
+          // Until KaTeX has loaded, show the source
+          <span key={i} className={s.display && !inline ? "math-display" : "math-inline"}>{s.value}</span>
         ) : (
           <span
             key={i}

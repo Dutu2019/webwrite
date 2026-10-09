@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, logout, type Assignment, type Course } from "@/lib/client/api";
+import { api, hasSession, logout, type Assignment, type Course } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
 import Modal from "../Modal";
 import SortButton, { sortByDueDate, type SortOrder } from "../SortButton";
@@ -31,9 +31,10 @@ export default function ProfessorWorkspace() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("latest");
   const cardRefs = useRef(new Map<string, HTMLElement>());
 
-  // Load every class with its assignments for the tree
+  // Load every class with its assignments for the tree, alongside the session
+  // check rather than after it (nothing renders until the user is confirmed)
   useEffect(() => {
-    if (!user) return;
+    if (!hasSession()) return;
     (async () => {
       try {
         const { courses } = await api<{ courses: Course[] }>("/api/courses");
@@ -52,7 +53,7 @@ export default function ProfessorWorkspace() {
         setLoadError("Couldn't load your classes.");
       }
     })();
-  }, [user]);
+  }, []);
 
   // Bring the selected assignment's card into view
   useEffect(() => {
