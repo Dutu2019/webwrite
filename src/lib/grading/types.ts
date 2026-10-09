@@ -1,6 +1,6 @@
 /**
- * Grading layer contracts. The real JEV model will implement `GradingResult`;
- * call sites only depend on these types so the stub can be swapped out.
+ * Grading layer contracts. Hosted Gemma 4 (via the Gemini API) implements
+ * `GradingResult`; call sites only depend on these types.
  */
 
 export interface Criterion {

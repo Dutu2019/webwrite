@@ -1,19 +1,20 @@
 import type { GradingInput, GradingResult } from "./types";
-import { jevStub } from "./jevStub";
+import { gradeWithGemma } from "./gemma";
 
 export type {
   Criterion,
   CriteriaScore,
+  CriterionStatus,
   GradingInput,
   GradingResult,
 } from "./types";
+export { decideBatch, gradeWithGemma } from "./gemma";
+export type { Question, Answer } from "./gemma";
 
 /**
- * Grade a single text answer. This is the only entry point call sites use.
- *
- * Today it delegates to a deterministic local stub. When the real JEV model is
- * available, replace the body (or swap the import) — no call site changes.
+ * Grade a single text answer against the question's criteria using hosted
+ * Gemma 4 (via the Gemini API). This is the only entry point call sites use.
  */
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
-  return jevStub(input);
+  return gradeWithGemma(input);
 }

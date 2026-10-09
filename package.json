@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "prisma generate",
     "dev": "next dev",
+    "prebuild": "prisma generate",
     "build": "next build",
     "start": "next start",
     "db:migrate": "prisma migrate dev",
@@ -32,7 +34,11 @@
     "prisma": "6.19.3",
     "tsx": "4.23.15",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.0"
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "postcss": "8.5.29",
+    "deepmerge-ts": "8.0.2"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,
