@@ -1,9 +1,11 @@
 import type { GradingInput, GradingResult } from "./types";
 import { jevStub } from "./jevStub";
+import { gemmaGrade } from "./gemma";
 
 export type {
   Criterion,
   CriteriaScore,
+  CriterionStatus,
   GradingInput,
   GradingResult,
 } from "./types";
@@ -11,9 +13,9 @@ export type {
 /**
  * Grade a single text answer. This is the only entry point call sites use.
  *
- * Today it delegates to a deterministic local stub. When the real JEV model is
- * available, replace the body (or swap the import) — no call site changes.
+ * `GRADING_BACKEND=gemma` grades through the Gemma decision service; otherwise
+ * a deterministic local stub is used. Swapping backends needs no call site changes.
  */
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
-  return jevStub(input);
+  return process.env.GRADING_BACKEND === "gemma" ? gemmaGrade(input) : jevStub(input);
 }
