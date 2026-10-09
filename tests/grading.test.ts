@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { evaluate } from "../src/lib/grading";
 
+// Gemma is the default backend; these tests cover the offline stub.
+process.env.GRADING_BACKEND = "stub";
+
 const reference = "t = sqrt(2h/g) = sqrt(40/9.8) ≈ 2.02 s";
 
 describe("grading stub (jevStub via evaluate)", () => {

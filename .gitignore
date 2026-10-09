@@ -21,6 +21,10 @@ build/
 prisma/dev.db
 prisma/dev.db-journal
 
+# python (gemma/ service)
+.venv/
+__pycache__/
+
 # misc
 .DS_Store
 coverage/

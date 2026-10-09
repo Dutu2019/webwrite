@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { HttpError } from "@/lib/http";
+import { HttpError } from "../http";
 import type {
   CriteriaScore,
   Criterion,
