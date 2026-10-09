@@ -104,6 +104,12 @@ export default function ProfessorWorkspace() {
     setSelectedAssignmentId(assignment.id);
   }
 
+  function onAssignmentDeleted(assignment: Assignment) {
+    updateCourseAssignments(assignment.courseId, (list) => list.filter((a) => a.id !== assignment.id));
+    setDialog(null);
+    if (selectedAssignmentId === assignment.id) setSelectedAssignmentId(null);
+  }
+
   function onAssignmentChanged(assignment: Assignment) {
     updateCourseAssignments(assignment.courseId, (list) =>
       list.map((a) => (a.id === assignment.id ? { ...a, ...assignment } : a)),
@@ -230,6 +236,7 @@ export default function ProfessorWorkspace() {
             courseId={dialog.assignment?.courseId ?? selectedCourse!.id}
             assignment={dialog.assignment}
             onSaved={onAssignmentSaved}
+            onDeleted={onAssignmentDeleted}
             onCancel={() => setDialog(null)}
           />
         )}

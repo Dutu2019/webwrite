@@ -16,11 +16,13 @@ export default function AssignmentForm({
   courseId,
   assignment,
   onSaved,
+  onDeleted,
   onCancel,
 }: {
   courseId: string;
   assignment?: Assignment;
   onSaved: (assignment: Assignment) => void;
+  onDeleted?: (assignment: Assignment) => void;
   onCancel: () => void;
 }) {
   const editing = Boolean(assignment);
@@ -30,6 +32,22 @@ export default function AssignmentForm({
   const [dueAt, setDueAt] = useState(initialDue);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteAssignment() {
+    if (!assignment) return;
+    setDeleting(true);
+    try {
+      await api(`/api/assignments/${assignment.id}`, "DELETE");
+      onDeleted?.(assignment);
+    } catch (err) {
+      setErrors({ form: err instanceof ApiError ? err.message : "Couldn't delete the assignment." });
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -110,7 +128,29 @@ export default function AssignmentForm({
         <p className="modal-note">New assignments start as <strong>Created</strong>. Students only see them once made public.</p>
       )}
 
+      {editing && confirmDelete && (
+        <div className="delete-confirm" role="alert">
+          <p>
+            Delete <strong>{assignment?.title}</strong>? Its questions and every student answer will be removed. This can&apos;t
+            be undone.
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+              Keep it
+            </button>
+            <button type="button" className="btn btn-inline btn-danger" onClick={deleteAssignment} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete permanently"}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="modal-actions">
+        {editing && !confirmDelete && (
+          <button type="button" className="btn btn-ghost btn-delete" onClick={() => setConfirmDelete(true)}>
+            Delete assignment
+          </button>
+        )}
         <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn btn-inline" disabled={saving}>
           {saving ? "Saving…" : editing ? "Save changes" : "Create assignment"}
