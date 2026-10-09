@@ -1,7 +1,9 @@
 import type { GradingInput, GradingResult } from "./types";
+import { gradeChoice } from "./choice";
 import { jevStub } from "./jevStub";
 
 export type {
+  ChoiceOption,
   Criterion,
   CriteriaScore,
   GradingInput,
@@ -15,5 +17,7 @@ export type {
  * available, replace the body (or swap the import) — no call site changes.
  */
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
+  // Multiple choice is marked exactly; only free text goes to the model
+  if (input.choices?.length) return gradeChoice(input.choices, input.studentAnswer);
   return jevStub(input);
 }

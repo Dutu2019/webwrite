@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
-import { forbidden, handle, notFound, ok } from "@/lib/http";
+import { badRequest, forbidden, handle, notFound, ok } from "@/lib/http";
 import { assignmentDto } from "@/lib/dto";
 import { PublishSchema } from "@/lib/validation/schemas";
 
@@ -25,6 +25,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
 
     const { published } = PublishSchema.parse(await req.json());
+
+    if (published) {
+      const questionCount = await prisma.question.count({ where: { assignmentId: assignment.id } });
+      if (questionCount === 0) {
+        throw badRequest("Add at least one question before making this assignment public");
+      }
+    }
 
     const updated = await prisma.assignment.update({
       where: { id: assignment.id },

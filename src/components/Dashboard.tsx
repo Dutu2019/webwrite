@@ -2,44 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, ApiError, getMe, hasSession, homeFor, logout, type Role, type User } from "@/lib/client/api";
-
-interface Course {
-  id: string;
-  name: string;
-  description: string | null;
-  joinCode: string;
-  teacher?: { name: string };
-}
+import { api, logout, type Course } from "@/lib/client/api";
+import { useSession } from "@/lib/client/useSession";
 
 /**
- * Placeholder home for each role: checks the session, then lists courses.
- * The real student/professor views (assignments, Jev feedback) build on this.
+ * Placeholder student home: lists enrolled courses.
+ * The real student view (assignments, Jev feedback) builds on this.
  */
-export default function Dashboard({ role }: { role: Role }) {
+export default function Dashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const user = useSession("STUDENT");
   const [courses, setCourses] = useState<Course[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!hasSession()) {
-      router.replace("/");
-      return;
-    }
-    (async () => {
-      try {
-        const me = await getMe();
-        if (me.role !== role) return router.replace(homeFor(me.role));
-        setUser(me);
-        const path = role === "TEACHER" ? "/api/courses" : "/api/student/courses";
-        setCourses((await api<{ courses: Course[] }>(path)).courses);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) router.replace("/");
-        else setError("Couldn't load your courses.");
-      }
-    })();
-  }, [role, router]);
+    if (!user) return;
+    api<{ courses: Course[] }>("/api/student/courses")
+      .then((d) => setCourses(d.courses))
+      .catch(() => setError("Couldn't load your courses."));
+  }, [user]);
 
   async function onLogout() {
     await logout();
@@ -56,7 +37,7 @@ export default function Dashboard({ role }: { role: Role }) {
       </header>
 
       <h1 className="dash-title">Welcome, {user.name.split(" ")[0]}</h1>
-      <p className="dash-muted">{role === "TEACHER" ? "Your courses" : "Courses you're enrolled in"}</p>
+      <p className="dash-muted">Courses you&apos;re enrolled in</p>
 
       {error && <p className="error">{error}</p>}
       {courses?.length === 0 && <p className="dash-muted">No courses yet.</p>}
@@ -65,9 +46,7 @@ export default function Dashboard({ role }: { role: Role }) {
           <li key={c.id} className="course-card">
             <h2>{c.name}</h2>
             {c.description && <p>{c.description}</p>}
-            <p className="dash-muted">
-              {role === "TEACHER" ? <>Join code: <code>{c.joinCode}</code></> : c.teacher && <>Taught by {c.teacher.name}</>}
-            </p>
+            {c.teacher && <p className="dash-muted">Taught by {c.teacher.name}</p>}
           </li>
         ))}
       </ul>

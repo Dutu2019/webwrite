@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireCourseOwner } from "@/lib/guards";
-import { handle, ok } from "@/lib/http";
+import { conflict, handle, ok } from "@/lib/http";
 import { courseDto, publicUser } from "@/lib/dto";
 import { CourseUpdateSchema } from "@/lib/validation/schemas";
 
@@ -48,17 +49,25 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const { course } = await requireCourseOwner(req, id);
     const body = CourseUpdateSchema.parse(await req.json());
 
-    const updated = await prisma.course.update({
-      where: { id: course.id },
-      data: {
-        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
-        ...(body.description !== undefined
-          ? { description: body.description?.trim() || null }
-          : {}),
-      },
-      include: { _count: { select: { enrollments: true, assignments: true } } },
-    });
-    return ok({ course: courseDto(updated) });
+    try {
+      const updated = await prisma.course.update({
+        where: { id: course.id },
+        data: {
+          ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+          ...(body.description !== undefined
+            ? { description: body.description?.trim() || null }
+            : {}),
+          ...(body.joinCode !== undefined ? { joinCode: body.joinCode } : {}),
+        },
+        include: { _count: { select: { enrollments: true, assignments: true } } },
+      });
+      return ok({ course: courseDto(updated) });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw conflict("That class code is already in use");
+      }
+      throw e;
+    }
   });
 }
 

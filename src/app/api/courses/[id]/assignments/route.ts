@@ -44,6 +44,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         questions: {
           create: body.questions.map((q, i) => ({
             order: q.order ?? i,
+            type: q.type,
+            options: q.type === "MULTIPLE_CHOICE" && q.options ? JSON.stringify(q.options) : null,
             prompt: q.prompt,
             reference: q.reference,
             criteria: q.criteria ? JSON.stringify(q.criteria) : null,
