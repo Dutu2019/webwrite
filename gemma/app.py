@@ -2,6 +2,7 @@
 import json
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from time import perf_counter
 from typing import Annotated, Callable, ClassVar, Literal
 
@@ -9,6 +10,22 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+
+def load_env_file(path: Path) -> None:
+    """Minimal .env support (KEY=value lines). Real environment variables win."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+# The repo-root .env is shared with the Next.js backend.
+load_env_file(Path(__file__).resolve().parent.parent / ".env")
 
 DEFAULT_MODEL = "gemma-4-26b-a4b-it"
 MODELS = {DEFAULT_MODEL, "gemma-4-31b-it"}
@@ -290,13 +307,22 @@ def gemini_payload(prompt: str, thinking: bool, extra_tokens: int) -> dict:
 
 
 async def call_gemini(client: httpx.AsyncClient, model: str, key: str, payload: dict) -> httpx.Response:
-    try:
-        response = await client.post(GEMINI_URL.format(model=model),
-                                     headers={"x-goog-api-key": key}, json=payload)
-    except httpx.TimeoutException:
-        raise HTTPException(504, "Gemini API timed out.") from None
-    except httpx.RequestError:
-        raise HTTPException(502, "Could not reach the Gemini API.") from None
+    # Google's API sometimes fails transiently (HTTP 5xx, dropped connections), so
+    # those get exactly one retry. Timeouts and bad model output are never retried.
+    for attempt in range(2):
+        retry = attempt == 0
+        try:
+            response = await client.post(GEMINI_URL.format(model=model),
+                                         headers={"x-goog-api-key": key}, json=payload)
+        except httpx.TimeoutException:
+            raise HTTPException(504, "Gemini API timed out.") from None
+        except httpx.RequestError:
+            if retry:
+                continue
+            raise HTTPException(502, "Could not reach the Gemini API.") from None
+        if response.status_code >= 500 and retry:
+            continue
+        break
 
     if response.status_code == 429:
         raise HTTPException(429, "Gemini API quota or rate limit reached. Try later.")
