@@ -1,7 +1,7 @@
 import type { GradingInput, GradingResult } from "./types";
 import { gradeChoice } from "./choice";
 import { jevStub } from "./jevStub";
-import { gemmaGrade } from "./gemma";
+import { gradeWithGemma } from "./gemma";
 
 export type {
   ChoiceOption,
@@ -21,5 +21,5 @@ export type { Question, Answer } from "./gemma";
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
   // Multiple choice is marked exactly; only free text goes to the model
   if (input.choices?.length) return gradeChoice(input.choices, input.studentAnswer);
-  return process.env.GRADING_BACKEND === "stub" ? jevStub(input) : gemmaGrade(input);
+  return process.env.GRADING_BACKEND === "stub" ? jevStub(input) : gradeWithGemma(input);
 }
