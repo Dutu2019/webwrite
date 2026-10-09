@@ -377,8 +377,10 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
 
 **403** once the assignment is `CLOSED` (its due date has passed).
 
-Each call stores a new attempt. A `Completion` row is created/updated once the
-answer is judged correct. The reference is never returned. `criteriaScores[].key`
+Each call stores a new attempt. The assignment's `Completion` row is
+created once **every** question has a correct attempt; its `score` is the
+points-weighted average of the best score per question, and `attempts` the total
+attempts on the assignment. The reference is never returned. `criteriaScores[].key`
 is the teacher's criterion key and *is* visible to students, so use neutral keys
 (e.g. `idea1`) for key-idea questions.
 
