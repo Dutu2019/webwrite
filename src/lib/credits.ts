@@ -1,0 +1,9 @@
+// Attribution for the photos in public/gallery (all from Wikimedia Commons).
+export const PHOTO_CREDITS = [
+  { file: "library-01-trinity-long-room.jpg", title: "Long Room, Trinity College Dublin", author: "MichaelMaggs", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0", source: "https://commons.wikimedia.org/wiki/File:County_Dublin_-_Long_Room-Trinity_College_-_20180703092642.jpg" },
+  { file: "library-02-admont-abbey.jpg", title: "Admont Abbey Library", author: "Jorge Royan", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0", source: "https://commons.wikimedia.org/wiki/File:Austria_-_Admont_Abbey_Library_-_1240.jpg" },
+  { file: "library-03-celsus-ephesus.jpg", title: "Library of Celsus, Ephesus", author: "Herbert Weber", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0", source: "https://commons.wikimedia.org/wiki/File:Library_of_Celsus_6242.jpg" },
+  { file: "library-04-strahov-theological-hall.jpg", title: "Strahov Theological Hall, Prague", author: "Jorge Royan", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0", source: "https://commons.wikimedia.org/wiki/File:Strahov_Theological_Hall,_Prague_-_7565.jpg" },
+  { file: "library-05-joanina-coimbra.jpg", title: "Portal of the Biblioteca Joanina, Coimbra", author: "Bernard Gagnon", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0", source: "https://commons.wikimedia.org/wiki/File:Portal_of_Biblioteca_Joanina_01.jpg" },
+  { file: "library-06-trinity-long-room.jpg", title: "Long Room Interior, Trinity College Dublin", author: "Diliff", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0", source: "https://commons.wikimedia.org/wiki/File:Long_Room_Interior,_Trinity_College_Dublin,_Ireland_-_Diliff.jpg" },
+];
