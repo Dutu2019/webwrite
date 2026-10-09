@@ -13,9 +13,10 @@ export type {
 /**
  * Grade a single text answer. This is the only entry point call sites use.
  *
- * `GRADING_BACKEND=gemma` grades through the Gemma decision service; otherwise
- * a deterministic local stub is used. Swapping backends needs no call site changes.
+ * Grades through the Gemma decision service by default; `GRADING_BACKEND=stub`
+ * uses a deterministic offline stub instead. Swapping backends needs no call
+ * site changes.
  */
 export async function evaluate(input: GradingInput): Promise<GradingResult> {
-  return process.env.GRADING_BACKEND === "gemma" ? gemmaGrade(input) : jevStub(input);
+  return process.env.GRADING_BACKEND === "stub" ? jevStub(input) : gemmaGrade(input);
 }

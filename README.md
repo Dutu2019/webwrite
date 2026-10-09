@@ -5,11 +5,11 @@ students write free-text explanations that are graded against **key ideas**.
 Built with Next.js App Router (UI + **API routes**) + Prisma + SQLite, with JWT
 bearer-token auth.
 
-Grading is pluggable. By default answers are scored by a deterministic local
-stub, so everything runs offline. Set `GRADING_BACKEND=gemma` to grade through
-the Gemma decision service in [`gemma/`](./gemma), which marks each key idea as
-`not_completed`, `in_progress`, or `included`, flags factually wrong answers, and
-supports live checking while the student types.
+Answers are graded by the Gemma decision service in [`gemma/`](./gemma), which
+marks each key idea as `not_completed`, `in_progress`, or `included`, flags
+factually wrong answers, and supports live checking while the student types.
+Grading is pluggable: `GRADING_BACKEND=stub` switches to a deterministic local
+stub that runs fully offline (no API key or Python needed).
 
 ## Stack
 
@@ -20,18 +20,22 @@ supports live checking while the student types.
 | Auth       | Stateless JWT bearer tokens (`jose`, HS256)             |
 | Passwords  | bcryptjs                                                |
 | Validation | zod                                                     |
-| Grading    | Local stub, or hosted Gemma 4 via `gemma/` (Python)     |
+| Grading    | Hosted Gemma 4 via `gemma/` (Python), or a local stub   |
 | Tests      | `scripts/smoke.ts` (e2e) + Vitest (grading unit)        |
 
 ## Setup
 
 ```bash
-cp .env.example .env    # then set JWT_SECRET (and GEMINI_API_KEY for Gemma grading)
+cp .env.example .env    # then set JWT_SECRET and GEMINI_API_KEY
 npm install
 npm run db:migrate      # create prisma/dev.db, apply migrations, generate the Prisma client
 npm run db:seed         # load example teacher/students/courses/assignments
 npm run dev             # http://localhost:3000
 ```
+
+Grading also needs the Gemma service running; see
+[Grading with Gemma](#grading-with-gemma). To run without it, set
+`GRADING_BACKEND="stub"` in `.env`.
 
 One `.env` at the repo root configures everything: the Next.js app, Prisma, and
 the `gemma/` service all read it. It is git-ignored.
@@ -40,7 +44,7 @@ the `gemma/` service all read it. It is git-ignored.
 | ------------------ | -------- | ------------------------------------------------------- |
 | `DATABASE_URL`     | Prisma   | `file:./dev.db` (relative to `prisma/`)                 |
 | `JWT_SECRET`       | API      | Long random string for anything non-local               |
-| `GRADING_BACKEND`  | API      | `stub` (default) or `gemma`                             |
+| `GRADING_BACKEND`  | API      | `gemma` (default) or `stub` (offline)                   |
 | `GEMMA_BATCH_URL`  | API      | Defaults to `http://127.0.0.1:8000/v1/decide/batch`     |
 | `GEMINI_API_KEY`   | `gemma/` | From https://aistudio.google.com/apikey                 |
 | `GEMMA_MODEL`      | `gemma/` | Optional: `gemma-4-26b-a4b-it` (default) or `gemma-4-31b-it` |
@@ -57,7 +61,7 @@ Join codes: `PHYS101`, `HIST200`.
 
 ## Grading with Gemma
 
-1. Put `GEMINI_API_KEY` in `.env` and set `GRADING_BACKEND="gemma"`.
+1. Put `GEMINI_API_KEY` in `.env` (`GRADING_BACKEND` defaults to `gemma`).
 2. Start the Gemma service in a second terminal (first run creates its venv):
 
    ```powershell
@@ -107,7 +111,7 @@ See "Gemma backend" in [`API.md`](./API.md) for response shapes, and
 | `npm run db:migrate`| Create/apply a Prisma migration                     |
 | `npm run db:seed`   | Seed example data                                   |
 | `npm run db:studio` | Prisma Studio (browse the DB)                       |
-| `npm run smoke`     | End-to-end API test (needs `npm run dev` running)   |
+| `npm run smoke`     | End-to-end API test (needs `npm run dev` and the Gemma service running, or `GRADING_BACKEND=stub`) |
 | `npm test`          | Vitest unit tests (grading stub)                    |
 
 ## Project layout
@@ -126,7 +130,7 @@ src/
     dto.ts            # response mappers (strip reference/criteria/passwordHash)
     client/           # browser API client + form validation
     grading/
-      index.ts        # evaluate(): picks stub or Gemma via GRADING_BACKEND
+      index.ts        # evaluate(): Gemma by default, stub if GRADING_BACKEND=stub
       jevStub.ts      # offline heuristic grader
       gemma.ts        # Gemma grader (one batch call per answer, cached)
       question.ts     # load a gradable question; student-safe idea progress
@@ -151,7 +155,7 @@ See [`API.md`](./API.md) for the full endpoint reference.
   token, role, course ownership, or enrollment. There is no client-supplied
   trust; "Continue" is re-graded on the server.
 - **Grading is pluggable.** `src/lib/grading/index.ts` exports `evaluate()`,
-  which uses the stub or Gemma depending on `GRADING_BACKEND`. A real JEV client
+  which uses Gemma by default or the stub with `GRADING_BACKEND=stub`. A real JEV client
   could be added the same way without changing call sites.
 - **Grading fails closed.** If grading is unavailable nothing is stored and the
   attempt isn't consumed; an idea the model can't judge counts as not completed.
