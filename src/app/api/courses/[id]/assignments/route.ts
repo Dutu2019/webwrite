@@ -14,16 +14,26 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     const { id } = await params;
     const { course } = await requireCourseOwner(req, id);
 
-    const assignments = await prisma.assignment.findMany({
-      where: { courseId: course.id },
-      include: { _count: { select: { questions: true, completions: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    // Opens and completions only count students still actively enrolled
+    const active = { student: { enrollments: { some: { courseId: course.id, status: "ACTIVE" } } } };
+    const [assignments, students] = await Promise.all([
+      prisma.assignment.findMany({
+        where: { courseId: course.id },
+        include: {
+          _count: {
+            select: { questions: true, completions: { where: active }, opens: { where: active } },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.enrollment.count({ where: { courseId: course.id, status: "ACTIVE" } }),
+    ]);
 
     return ok({
       assignments: assignments.map((a) => ({
         ...assignmentDto(a),
         counts: { questions: a._count.questions, completions: a._count.completions },
+        stats: { students, opened: a._count.opens, completed: a._count.completions },
       })),
     });
   });

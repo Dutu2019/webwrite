@@ -16,6 +16,31 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
+/** Opened / completed counts out of the class's enrolled students. */
+function StudentStats({ stats }: { stats: NonNullable<Assignment["stats"]> }) {
+  const { students, opened, completed } = stats;
+  return (
+    <span className="assignment-stats">
+      <span title={`${opened} of ${students} students opened this assignment`}>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        <span className="visually-hidden">Opened by </span>
+        {opened}/{students}
+      </span>
+      <span title={`${completed} of ${students} students completed this assignment`}>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="m8 12 3 3 5-6" />
+        </svg>
+        <span className="visually-hidden">Completed by </span>
+        {completed}/{students}
+      </span>
+    </span>
+  );
+}
+
 /** One compact row in a class's assignment stack. The name opens its questions page. */
 const AssignmentCard = forwardRef<
   HTMLElement,
@@ -58,6 +83,7 @@ const AssignmentCard = forwardRef<
       </div>
 
       <div className="assignment-side">
+        {a.stats && a.status !== "CREATED" && <StudentStats stats={a.stats} />}
         {a.status === "CREATED" && (
           <button type="button" className="btn btn-inline btn-small" onClick={makePublic} disabled={busy}>
             {busy ? "Publishing…" : "Make public"}

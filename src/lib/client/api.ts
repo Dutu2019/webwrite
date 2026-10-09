@@ -33,6 +33,16 @@ export interface Assignment {
   status: AssignmentStatus;
   createdAt: string;
   counts?: { questions: number; completions: number };
+  /** Teacher list only: actively enrolled students, and how many opened / completed it. */
+  stats?: { students: number; opened: number; completed: number };
+}
+
+/** An assignment as GET /api/student/assignments lists it for the signed-in student. */
+export interface StudentAssignment extends Assignment {
+  course: { id: string; name: string };
+  questionCount: number;
+  completed: boolean;
+  completion: { completedAt: string; score: number | null; attempts: number } | null;
 }
 
 interface AuthResponse {

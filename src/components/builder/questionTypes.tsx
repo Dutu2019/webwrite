@@ -62,7 +62,7 @@ export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
   KEY_IDEAS: {
     id: "KEY_IDEAS",
     label: "Key ideas",
-    description: "An explanation that must include specific ideas; Jev tracks each one.",
+    description: "An explanation that must include specific ideas; Gemma tracks each one.",
     icon: svg(
       <>
         <path d="M9 18h6M10 21h4" />
