@@ -4,9 +4,10 @@ A class-assignment app where teachers build assignments and students answer in
 their own words. Free-text answers are graded by **hosted Gemma 4** (via the
 Gemini API) against the teacher's **key ideas**: each idea is marked
 `not_completed`, `in_progress`, or `included` live while the student types.
-Multiple-choice questions are marked exactly. Built with Next.js App Router (UI
-and API routes) + Prisma + PostgreSQL, with JWT bearer-token auth, deployed on
-Vercel.
+Multiple-choice questions are marked exactly. The interface is in **Quebec
+French by default**, with English available from a toggle on every page. Built
+with Next.js App Router (UI and API routes) + Prisma + PostgreSQL, with JWT
+bearer-token auth, deployed on Vercel.
 
 ## Stack
 
@@ -89,6 +90,27 @@ submit share a per-student limit of 30 requests per minute (`429 RATE_LIMITED`).
 
 See "Grading" in [`API.md`](./API.md) for response shapes.
 
+## Languages (French / English)
+
+The interface defaults to Quebec French (`fr-CA`); the language toggle switches
+to English and remembers the choice in the `webwrite.locale` cookie, which the
+root layout reads so server-rendered HTML (and `<html lang>`) is right from the
+first byte.
+
+- **Adding text:** put every user-visible string in the dictionaries under
+  `src/lib/i18n/messages/` (one file per area: `common`, `login`, `student`,
+  `professor`, `builder`). Each file defines `fr` first and `en: typeof fr`, so
+  TypeScript rejects an English dictionary with a missing or extra key; a unit
+  test also checks no string is empty. Use functions for interpolation and
+  plurals, e.g. ``due: (date: string) => `Remise le ${date}` ``.
+- **In components:** `const { t, fmt, server } = useI18n()` in client
+  components (`t.common.actions.save`, `fmt.date(x)` for dates);
+  `await getMessages()` from `@/lib/i18n/server` in server components.
+- **Server text:** the API stays in English. Error messages and generated
+  grading feedback are translated on the client by
+  `src/lib/i18n/serverText.ts` (also covers feedback saved with past attempts);
+  add new server messages there. Teacher-written text is never translated.
+
 ## Scripts
 
 | Command               | Purpose                                             |
@@ -125,6 +147,7 @@ src/
     dto.ts            # response mappers (strip reference/criteria/keys/passwordHash)
     rateLimit.ts      # per-student grading rate limit
     client/           # browser API client + session hook
+    i18n/             # French/English dictionaries, provider, server-text translation
     grading/
       index.ts        # evaluate(): multiple choice, Gemma, or the stub
       gemma.ts        # Gemini API client + key-idea grading (one batch call, cached)

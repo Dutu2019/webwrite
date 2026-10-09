@@ -14,9 +14,25 @@
   background: var(--paper);
   border-bottom: 1px solid var(--line);
 }
-.builder-topbar-actions { display: flex; align-items: center; gap: 12px; }
 .save-state { font-size: 0.85rem; font-style: italic; color: var(--muted); }
 .builder-load-error { padding: 32px 28px; }
+
+/* Teacher builder only (.builder-editor): .builder-topbar, .save-state, .form-header-* and
+   .builder-banner are shared with the student assignment view, so long-text fixes are scoped here. */
+.builder-editor .builder-topbar { flex-wrap: wrap; row-gap: 8px; }
+.builder-editor .builder-topbar > .link-btn { flex: none; white-space: nowrap; }
+.builder-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+  min-width: 0;
+}
+.builder-topbar-actions .btn { flex: none; white-space: nowrap; }
+.builder-topbar-actions .save-state { min-width: 0; text-align: right; overflow-wrap: anywhere; }
 
 .builder-body {
   display: grid;
@@ -44,6 +60,8 @@
 }
 .form-header-desc { margin: 10px 0 0; }
 .form-header-meta { margin: 12px 0 0; font-size: 0.88rem; color: var(--muted); }
+.builder-editor .form-header-card h1 { min-width: 0; overflow-wrap: anywhere; }
+.builder-editor .form-header-desc { overflow-wrap: anywhere; }
 
 .builder-banner {
   display: flex;
@@ -57,11 +75,14 @@
 }
 .builder-banner p { margin: 0; font-size: 0.92rem; }
 .builder-notice { margin: 0; }
+.builder-editor .builder-banner { flex-wrap: wrap; }
+.builder-editor .builder-banner p { flex: 1 1 280px; min-width: 0; }
+.builder-editor .builder-banner .btn { flex: none; white-space: nowrap; }
 
 /* Empty state with a type picker */
 .builder-empty { display: grid; justify-items: center; gap: 10px; padding: 32px 0; text-align: center; color: var(--muted); }
 .builder-empty > p { margin: 0 0 6px; font-style: italic; }
-.type-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; width: 100%; }
+.type-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 12px; width: 100%; }
 .type-option {
   display: grid;
   justify-items: start;
@@ -79,6 +100,7 @@
 .type-option:hover { border-color: var(--gold); box-shadow: 0 6px 16px -12px rgba(42, 33, 25, 0.5); }
 .type-option svg { color: var(--accent); }
 .type-option-label { font-family: var(--font-display), Georgia, serif; font-size: 1.25rem; font-weight: 600; }
+.type-option-label, .type-option-desc { max-width: 100%; overflow-wrap: anywhere; }
 .type-option-desc { font-size: 0.85rem; color: var(--muted); }
 
 /* Question cards */
@@ -129,12 +151,12 @@
 .q-summary-text { display: grid; gap: 4px; flex: 1; min-width: 0; }
 .q-summary-prompt { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-summary-prompt em { font-weight: 400; color: var(--muted); }
-.q-summary-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--muted); }
+.q-summary-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--muted); }
 .q-summary-meta svg { width: 15px; height: 15px; }
 .q-answer-preview { display: block; margin-top: 6px; border-bottom: 1px dotted var(--line); }
 .q-answer-preview.is-line { width: 45%; }
 .q-answer-preview.is-box { width: 100%; height: 26px; border: 1px dotted var(--line); border-radius: 4px; }
-.q-needs-fix { flex: none; font-size: 0.8rem; color: var(--error); }
+.q-needs-fix { flex: none; font-size: 0.8rem; color: var(--error); white-space: nowrap; }
 
 /* Expanded */
 .q-head { display: flex; align-items: flex-start; gap: 12px; }
@@ -156,7 +178,9 @@
 .q-prompt textarea[aria-invalid="true"] { border-bottom-color: var(--error); }
 .q-prompt .error { margin-bottom: 0; }
 
+.q-type { flex: none; max-width: 100%; }
 .q-type select {
+  max-width: 100%;
   min-width: 170px;
   padding: 9px 12px;
   border: 1px solid var(--line);
@@ -178,6 +202,8 @@
   color: var(--muted);
 }
 .q-type-desc svg { width: 16px; height: 16px; flex: none; }
+.builder-editor .math-preview-body { overflow-wrap: anywhere; }
+.builder-editor .field-help, .builder-editor .error { overflow-wrap: anywhere; }
 .q-body { margin-left: 40px; }
 .q-field textarea { font-size: 0.95rem; }
 
@@ -191,9 +217,9 @@
   font-weight: 600;
 }
 .idea-list { display: grid; gap: 10px; margin: 10px 0 8px; padding: 0; list-style: none; }
-.idea-row { display: grid; grid-template-columns: 62px 1fr 32px; align-items: start; gap: 8px; }
-.idea-label { padding-top: 10px; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
-.idea-fields { display: grid; gap: 6px; }
+.idea-row { display: grid; grid-template-columns: 62px minmax(0, 1fr) 32px; align-items: start; gap: 8px; }
+.idea-label { padding-top: 10px; font-size: 0.85rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.idea-fields { display: grid; gap: 6px; min-width: 0; }
 .idea-fields input {
   width: 100%;
   padding: 9px 12px;
@@ -283,7 +309,7 @@
 .math-preview-body { white-space: pre-wrap; overflow-x: auto; }
 .math-display { display: block; margin: 4px 0; overflow-x: auto; }
 .q-summary-prompt .katex { font-size: 1em; }
-.latex-tip { font-size: 0.78rem; color: var(--muted); }
+.latex-tip { min-width: 0; font-size: 0.78rem; color: var(--muted); }
 .latex-tip code { padding: 0 4px; border-radius: 3px; background: var(--paper-deep); font-size: 0.95em; }
 
 /* Multiple choice */
@@ -296,7 +322,7 @@
   font-weight: 600;
 }
 .option-list { display: grid; gap: 8px; margin: 10px 0 8px; padding: 0; list-style: none; }
-.option-row { display: grid; grid-template-columns: 30px 1fr 32px; align-items: start; gap: 8px; }
+.option-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 32px; align-items: start; gap: 8px; }
 .option-mark {
   width: 24px;
   height: 24px;
@@ -313,7 +339,7 @@
 .option-mark.is-correct { border-color: #3f6b3a; background: #3f6b3a; }
 .option-mark:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .option-mark:disabled { cursor: default; }
-.option-fields { display: grid; gap: 4px; }
+.option-fields { display: grid; gap: 4px; min-width: 0; }
 .option-fields input {
   width: 100%;
   padding: 9px 12px;
@@ -329,8 +355,8 @@
 .option-fields input[aria-invalid="true"] { border-color: var(--error); }
 .option-fields .error { margin: 0; min-height: 0; }
 
-.q-choice-preview { display: grid; gap: 4px; margin-top: 6px; font-size: 0.9rem; }
-.q-choice { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.q-choice-preview { display: grid; gap: 4px; margin-top: 6px; font-size: 0.9rem; min-width: 0; }
+.q-choice { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
 .q-choice em { font-size: 0.85rem; }
 .q-choice-dot { flex: none; width: 12px; height: 12px; border: 1.5px solid var(--line); border-radius: 50%; }
 .q-choice-dot.is-multi { border-radius: 3px; }
@@ -387,7 +413,7 @@
   .q-head { flex-wrap: wrap; }
   .q-type select { min-width: 0; }
   .q-type-desc, .q-body { margin-left: 0; }
-  .idea-row { grid-template-columns: 1fr 32px; }
+  .idea-row { grid-template-columns: minmax(0, 1fr) 32px; }
   .idea-label { grid-column: 1 / -1; padding-top: 0; }
 }
 

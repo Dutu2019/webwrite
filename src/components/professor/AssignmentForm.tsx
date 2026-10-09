@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { api, ApiError, type Assignment } from "@/lib/client/api";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 type Errors = { title?: string; dueAt?: string; form?: string };
 
@@ -25,7 +26,8 @@ export default function AssignmentForm({
   onDeleted?: (assignment: Assignment) => void;
   onCancel: () => void;
 }) {
-  const editing = Boolean(assignment);
+  const { t } = useI18n();
+  const tf = t.professor.assignmentForm;
   const initialDue = assignment?.dueAt ? toLocalInput(new Date(assignment.dueAt)) : "";
   const [title, setTitle] = useState(assignment?.title ?? "");
   const [description, setDescription] = useState(assignment?.description ?? "");
@@ -42,7 +44,7 @@ export default function AssignmentForm({
       await api(`/api/assignments/${assignment.id}`, "DELETE");
       onDeleted?.(assignment);
     } catch (err) {
-      setErrors({ form: err instanceof ApiError ? err.message : "Couldn't delete the assignment." });
+      setErrors({ form: err instanceof ApiError ? err.message : tf.errors.delete });
       setConfirmDelete(false);
     } finally {
       setDeleting(false);
@@ -52,11 +54,11 @@ export default function AssignmentForm({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const found: Errors = {};
-    if (!title.trim()) found.title = "* please give the assignment a name";
+    if (!title.trim()) found.title = tf.errors.title;
     const due = dueAt ? new Date(dueAt) : null;
-    if (!due || Number.isNaN(due.getTime())) found.dueAt = "* please pick a due date";
+    if (!due || Number.isNaN(due.getTime())) found.dueAt = tf.errors.dueMissing;
     // An unchanged due date may already be past (e.g. editing a closed assignment)
-    else if (dueAt !== initialDue && due <= new Date()) found.dueAt = "* the due date must be in the future";
+    else if (dueAt !== initialDue && due <= new Date()) found.dueAt = tf.errors.duePast;
     setErrors(found);
     if (found.title || found.dueAt || !due) return;
 
@@ -77,7 +79,7 @@ export default function AssignmentForm({
         counts: { questions: saved.questions.length, completions: assignment?.counts?.completions ?? 0 },
       });
     } catch (err) {
-      setErrors({ form: err instanceof ApiError ? err.message : "Couldn't save the assignment." });
+      setErrors({ form: err instanceof ApiError ? err.message : tf.errors.save });
     } finally {
       setSaving(false);
     }
@@ -86,12 +88,12 @@ export default function AssignmentForm({
   return (
     <form onSubmit={onSubmit} noValidate>
       <div className="field">
-        <label htmlFor="assignment-title">Name</label>
+        <label htmlFor="assignment-title">{tf.title}</label>
         <input
           id="assignment-title"
           autoFocus
           maxLength={200}
-          placeholder="e.g. Essay: Civil Disobedience"
+          placeholder={tf.titlePlaceholder}
           value={title}
           aria-invalid={errors.title ? true : undefined}
           onChange={(e) => setTitle(e.target.value)}
@@ -100,7 +102,9 @@ export default function AssignmentForm({
       </div>
 
       <div className="field">
-        <label htmlFor="assignment-description">Description <span className="optional">optional</span></label>
+        <label htmlFor="assignment-description">
+          {t.professor.form.description} <span className="optional">{t.professor.form.optional}</span>
+        </label>
         <textarea
           id="assignment-description"
           rows={3}
@@ -112,7 +116,7 @@ export default function AssignmentForm({
       </div>
 
       <div className="field">
-        <label htmlFor="assignment-due">Due date</label>
+        <label htmlFor="assignment-due">{tf.dueDate}</label>
         <input
           id="assignment-due"
           type="datetime-local"
@@ -124,36 +128,45 @@ export default function AssignmentForm({
         <p className="error">{errors.dueAt ?? errors.form}</p>
       </div>
 
-      {!editing && (
-        <p className="modal-note">New assignments start as <strong>Created</strong>. Students only see them once made public.</p>
+      {!assignment && (
+        <p className="modal-note">
+          {tf.newNoteBefore}
+          <strong>{t.common.assignmentStatus.CREATED}</strong>
+          {tf.newNoteAfter}
+        </p>
       )}
 
-      {editing && confirmDelete && (
+      {assignment && confirmDelete && (
         <div className="delete-confirm" role="alert">
           <p>
-            Delete <strong>{assignment?.title}</strong>? Its questions and every student answer will be removed. This can&apos;t
-            be undone.
+            {tf.deleteConfirmBefore}
+            <strong>{assignment.title}</strong>
+            {tf.deleteConfirmAfter}
           </p>
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
-              Keep it
+              {tf.keep}
             </button>
             <button type="button" className="btn btn-inline btn-danger" onClick={deleteAssignment} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete permanently"}
+              {deleting ? tf.deleting : tf.deletePermanently}
             </button>
           </div>
         </div>
       )}
 
       <div className="modal-actions">
-        {editing && !confirmDelete && (
+        {assignment && !confirmDelete && (
           <button type="button" className="btn btn-ghost btn-delete" onClick={() => setConfirmDelete(true)}>
-            Delete assignment
+            {tf.deleteAssignment}
           </button>
         )}
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn-ghost" onClick={onCancel}>{t.common.actions.cancel}</button>
         <button type="submit" className="btn btn-inline" disabled={saving}>
-          {saving ? "Saving…" : editing ? "Save changes" : "Create assignment"}
+          {saving
+            ? t.common.actions.saving
+            : assignment
+              ? t.professor.form.saveChanges
+              : t.professor.workspace.createAssignment}
         </button>
       </div>
     </form>

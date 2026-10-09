@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { Assignment, Course } from "@/lib/client/api";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 export type CourseNode = Course & { assignments: Assignment[] };
 
@@ -29,14 +30,16 @@ export default function ClassTree({
   newClassLabel: string;
   assignmentHref: (a: Assignment) => string;
 }) {
+  const { t } = useI18n();
+  const tt = t.professor.tree;
   return (
-    <nav className="tree" aria-label="Your classes">
+    <nav className="tree" aria-label={tt.navLabel}>
       <div className="tree-header">
-        <h2>Classes</h2>
+        <h2>{tt.heading}</h2>
         <button type="button" className="tree-add" onClick={onNewClass} aria-label={newClassLabel} title={newClassLabel}>+</button>
       </div>
 
-      {courses.length === 0 && <p className="tree-empty">No classes yet.</p>}
+      {courses.length === 0 && <p className="tree-empty">{tt.empty}</p>}
 
       <ul className="tree-list">
         {courses.map((c) => {
@@ -48,12 +51,12 @@ export default function ClassTree({
                   type="button"
                   className={`tree-caret${open ? " is-open" : ""}`}
                   aria-expanded={open}
-                  aria-label={open ? `Collapse ${c.name}` : `Expand ${c.name}`}
+                  aria-label={open ? tt.collapse(c.name) : tt.expand(c.name)}
                   onClick={() => onToggle(c.id)}
                 >
                   ▸
                 </button>
-                <button type="button" className="tree-label" onClick={() => onOpenCourse(c.id)}>
+                <button type="button" className="tree-label" title={`${c.name} · ${c.joinCode}`} onClick={() => onOpenCourse(c.id)}>
                   <span className="tree-name">{c.name}</span>
                   <span className="tree-code">{c.joinCode}</span>
                 </button>
@@ -61,10 +64,10 @@ export default function ClassTree({
 
               {open && (
                 <ul className="tree-children">
-                  {c.assignments.length === 0 && <li className="tree-empty">No assignments</li>}
+                  {c.assignments.length === 0 && <li className="tree-empty">{tt.noAssignments}</li>}
                   {c.assignments.map((a) => (
                     <li key={a.id} className="tree-leaf-row">
-                      <Link className="tree-leaf" href={assignmentHref(a)}>
+                      <Link className="tree-leaf" href={assignmentHref(a)} title={a.title}>
                         <span className={`status-dot status-${a.status.toLowerCase()}`} aria-hidden="true" />
                         <span className="tree-leaf-title">{a.title}</span>
                       </Link>

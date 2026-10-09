@@ -3,38 +3,29 @@
 import Link from "next/link";
 import { forwardRef, useState } from "react";
 import { api, ApiError, type Assignment } from "@/lib/client/api";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import EditButton from "./EditButton";
-
-const STATUS_LABEL = { CREATED: "Created", POSTED: "Posted", CLOSED: "Closed" } as const;
-
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 /** Opened / completed counts out of the class's enrolled students. */
 function StudentStats({ stats }: { stats: NonNullable<Assignment["stats"]> }) {
+  const { t } = useI18n();
   const { students, opened, completed } = stats;
   return (
     <span className="assignment-stats">
-      <span title={`${opened} of ${students} students opened this assignment`}>
+      <span title={t.professor.card.openedTitle(opened, students)}>
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
           <circle cx="12" cy="12" r="3" />
         </svg>
-        <span className="visually-hidden">Opened by </span>
+        <span className="visually-hidden">{t.professor.card.openedBy}</span>
         {opened}/{students}
       </span>
-      <span title={`${completed} of ${students} students completed this assignment`}>
+      <span title={t.professor.card.completedTitle(completed, students)}>
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9" />
           <path d="m8 12 3 3 5-6" />
         </svg>
-        <span className="visually-hidden">Completed by </span>
+        <span className="visually-hidden">{t.professor.card.completedBy}</span>
         {completed}/{students}
       </span>
     </span>
@@ -51,9 +42,11 @@ const AssignmentCard = forwardRef<
     onEdit: () => void;
   }
 >(function AssignmentCard({ assignment: a, selected, onChange, onEdit }, ref) {
+  const { t, fmt } = useI18n();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const questions = a.counts?.questions ?? 0;
+  const questions = t.professor.card.questions(a.counts?.questions ?? 0);
+  const due = a.dueAt ? t.professor.card.due(fmt.dateTime(a.dueAt)) : t.professor.card.noDue;
 
   async function makePublic() {
     setBusy(true);
@@ -62,7 +55,7 @@ const AssignmentCard = forwardRef<
       const { assignment } = await api<{ assignment: Assignment }>(`/api/assignments/${a.id}/publish`, "POST", { published: true });
       onChange({ ...assignment, counts: a.counts });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't make the assignment public.");
+      setError(err instanceof ApiError ? err.message : t.professor.card.publishError);
     } finally {
       setBusy(false);
     }
@@ -74,9 +67,10 @@ const AssignmentCard = forwardRef<
         <h3>
           <Link href={`/teacher/assignments/${a.id}`}>{a.title}</Link>
         </h3>
-        <p className="assignment-sub">
-          <span className="assignment-count">{questions} {questions === 1 ? "question" : "questions"}</span>
-          <span> · {a.dueAt ? `Due ${dateFormat.format(new Date(a.dueAt))}` : "No due date"}</span>
+        {/* A single truncated line; the tooltip keeps the full text */}
+        <p className="assignment-sub" title={`${questions} · ${due}`}>
+          <span className="assignment-count">{questions}</span>
+          <span> · {due}</span>
         </p>
         {a.description && <p className="assignment-desc" title={a.description}>{a.description}</p>}
         {error && <p className="error assignment-error">{error}</p>}
@@ -84,17 +78,17 @@ const AssignmentCard = forwardRef<
 
       <div className="assignment-side">
         {a.stats && a.status !== "CREATED" && (
-          <Link className="assignment-stats-link" href={`/teacher/assignments/${a.id}?tab=students`} title="See each student's attempts and answers">
+          <Link className="assignment-stats-link" href={`/teacher/assignments/${a.id}?tab=students`} title={t.professor.card.seeResults}>
             <StudentStats stats={a.stats} />
           </Link>
         )}
         {a.status === "CREATED" && (
           <button type="button" className="btn btn-inline btn-small" onClick={makePublic} disabled={busy}>
-            {busy ? "Publishing…" : "Make public"}
+            {busy ? t.professor.card.publishing : t.professor.card.publish}
           </button>
         )}
-        <span className={`status-pill status-${a.status.toLowerCase()}`}>{STATUS_LABEL[a.status]}</span>
-        <EditButton label={`Edit ${a.title}`} onClick={onEdit} />
+        <span className={`status-pill status-${a.status.toLowerCase()}`}>{t.common.assignmentStatus[a.status]}</span>
+        <EditButton label={t.professor.card.edit(a.title)} onClick={onEdit} />
       </div>
     </article>
   );

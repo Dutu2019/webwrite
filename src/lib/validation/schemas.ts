@@ -104,6 +104,8 @@ export const SubmitSchema = z.object({
 /** The current draft to hint on; omitted → the latest submission. */
 export const HintSchema = z.object({
   answerText: z.string().max(20000).optional(),
+  /** Interface language; Gemma writes the hint in it. */
+  locale: z.enum(["fr", "en"]).default("fr"),
 });
 
 export const StudentSearchSchema = z.object({

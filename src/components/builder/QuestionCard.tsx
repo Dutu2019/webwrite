@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import MathText, { MathPreview } from "../MathText";
 import { hasErrors, QUESTION_TYPE_DEFS, switchType, TYPE_LIST } from "./questionTypes";
 import type { DraftErrors, QuestionDraft, QuestionType } from "./types";
@@ -28,10 +29,10 @@ const icon = (d: string) => (
 );
 
 /** Six-dot grip at the top of each card; drag it to reorder. */
-function DragHandle({ index, onGrip }: { index: number; onGrip: () => void }) {
+function DragHandle({ title, onGrip }: { title: string; onGrip: () => void }) {
   return (
     // Mouse-only affordance; the arrow buttons are the keyboard/screen-reader way to reorder
-    <div className="q-grip" title={`Drag question ${index + 1} to reorder`} aria-hidden="true" onPointerDown={onGrip}>
+    <div className="q-grip" title={title} aria-hidden="true" onPointerDown={onGrip}>
       <svg viewBox="0 0 24 10" width="24" height="10" aria-hidden="true" fill="currentColor">
         {[4, 12, 20].flatMap((x) => [<circle key={`${x}a`} cx={x} cy="2.5" r="1.4" />, <circle key={`${x}b`} cx={x} cy="7.5" r="1.4" />])}
       </svg>
@@ -44,30 +45,36 @@ const QuestionCard = forwardRef<HTMLElement, Props>(function QuestionCard(
   { draft, index, count, active, readOnly, errors, onGrip, onActivate, onChange, onMove, onDuplicate, onDelete },
   ref,
 ) {
+  const { t } = useI18n();
+  const text = t.builder.card;
   const def = QUESTION_TYPE_DEFS[draft.type];
+  const typeText = t.builder.types[draft.type];
   const invalid = hasErrors(errors);
-  const points = `${draft.points} ${draft.points === 1 ? "pt" : "pts"}`;
+  const n = index + 1;
+  const grip = !readOnly && <DragHandle title={text.dragToReorder(n)} onGrip={onGrip} />;
 
   if (!active) {
+    const multi = draft.options.filter((o) => o.correct).length > 1;
     return (
       <article ref={ref} className={`q-card is-collapsed${invalid ? " has-error" : ""}`}>
-        {!readOnly && <DragHandle index={index} onGrip={onGrip} />}
-        <button type="button" className="q-summary" onClick={onActivate} aria-label={`Edit question ${index + 1}`}>
-          <span className="q-number">{index + 1}</span>
+        {grip}
+        <button type="button" className="q-summary" onClick={onActivate} aria-label={text.editQuestion(n)}>
+          <span className="q-number">{n}</span>
           <span className="q-summary-text">
-            <span className="q-summary-prompt">
-              {draft.prompt.trim() ? <MathText text={draft.prompt} inline /> : <em>Untitled question</em>}
+            {/* One line with an ellipsis; the full prompt stays available on hover */}
+            <span className="q-summary-prompt" title={draft.prompt.trim() || undefined}>
+              {draft.prompt.trim() ? <MathText text={draft.prompt} inline /> : <em>{text.untitled}</em>}
             </span>
             <span className="q-summary-meta">
-              {def.icon} {def.label} · {points}
-              {draft.type === "KEY_IDEAS" && ` · ${draft.ideas.length} ${draft.ideas.length === 1 ? "idea" : "ideas"}`}
+              {def.icon} {typeText.label} · {t.builder.points(draft.points)}
+              {draft.type === "KEY_IDEAS" && ` · ${t.builder.ideaCount(draft.ideas.length)}`}
             </span>
             {def.answerPreview === "choices" ? (
               <span className="q-choice-preview">
                 {draft.options.map((o) => (
                   <span key={o.id} className="q-choice">
-                    <span className={`q-choice-dot${draft.options.filter((x) => x.correct).length > 1 ? " is-multi" : ""}`} aria-hidden="true" />
-                    {o.text.trim() ? <MathText text={o.text} inline /> : <em>Empty option</em>}
+                    <span className={`q-choice-dot${multi ? " is-multi" : ""}`} aria-hidden="true" />
+                    {o.text.trim() ? <MathText text={o.text} inline /> : <em>{text.emptyOption}</em>}
                   </span>
                 ))}
               </span>
@@ -75,21 +82,21 @@ const QuestionCard = forwardRef<HTMLElement, Props>(function QuestionCard(
               <span className={`q-answer-preview is-${def.answerPreview}`} aria-hidden="true" />
             )}
           </span>
-          {invalid && <span className="q-needs-fix">Needs attention</span>}
+          {invalid && <span className="q-needs-fix">{text.needsAttention}</span>}
         </button>
       </article>
     );
   }
 
   return (
-    <article ref={ref} className={`q-card is-active${invalid ? " has-error" : ""}`} aria-label={`Question ${index + 1}`}>
-      {!readOnly && <DragHandle index={index} onGrip={onGrip} />}
+    <article ref={ref} className={`q-card is-active${invalid ? " has-error" : ""}`} aria-label={text.question(n)}>
+      {grip}
       <div className="q-head">
-        <span className="q-number">{index + 1}</span>
+        <span className="q-number">{n}</span>
         <div className="q-prompt">
           <textarea
-            aria-label={`Question ${index + 1}`}
-            placeholder="Question"
+            aria-label={text.question(n)}
+            placeholder={text.promptPlaceholder}
             rows={2}
             maxLength={20000}
             autoFocus={!draft.prompt}
@@ -102,20 +109,20 @@ const QuestionCard = forwardRef<HTMLElement, Props>(function QuestionCard(
           <p className="error">{errors.prompt}</p>
         </div>
         <label className="q-type">
-          <span className="visually-hidden">Question type</span>
+          <span className="visually-hidden">{text.questionType}</span>
           <select
             value={draft.type}
             disabled={readOnly}
             onChange={(e) => onChange(switchType(draft, e.target.value as QuestionType))}
           >
-            {TYPE_LIST.map((t) => (
-              <option key={t.id} value={t.id}>{t.label}</option>
+            {TYPE_LIST.map(({ id }) => (
+              <option key={id} value={id}>{t.builder.types[id].label}</option>
             ))}
           </select>
         </label>
       </div>
 
-      <p className="q-type-desc">{def.icon} {def.description}</p>
+      <p className="q-type-desc">{def.icon} {typeText.description}</p>
 
       <div className="q-body">
         <def.Editor draft={draft} errors={errors} readOnly={readOnly} onChange={onChange} />
@@ -123,7 +130,7 @@ const QuestionCard = forwardRef<HTMLElement, Props>(function QuestionCard(
 
       <footer className="q-footer">
         <label className="q-points">
-          Points
+          {text.points}
           <input
             type="number"
             min={1}
@@ -136,22 +143,22 @@ const QuestionCard = forwardRef<HTMLElement, Props>(function QuestionCard(
         </label>
         {errors.points && <span className="error">{errors.points}</span>}
         <span className="latex-tip">
-          Math: type <code>x/2</code>, <code>x^2</code>, <code>sqrt(2)</code>, or LaTeX <code>$\alpha$</code>, <code>$$\int f$$</code>
+          {text.mathTipLead} <code>x/2</code>, <code>x^2</code>, <code>sqrt(2)</code>{text.mathTipLatex} <code>$\alpha$</code>, <code>$$\int f$$</code>
         </span>
 
         {!readOnly && (
           <div className="q-actions">
-            <button type="button" className="icon-btn" title="Move up" aria-label="Move question up" disabled={index === 0} onClick={() => onMove(-1)}>
+            <button type="button" className="icon-btn" title={text.moveUp} aria-label={text.moveUpLabel} disabled={index === 0} onClick={() => onMove(-1)}>
               {icon("M12 19V5M5 12l7-7 7 7")}
             </button>
-            <button type="button" className="icon-btn" title="Move down" aria-label="Move question down" disabled={index === count - 1} onClick={() => onMove(1)}>
+            <button type="button" className="icon-btn" title={text.moveDown} aria-label={text.moveDownLabel} disabled={index === count - 1} onClick={() => onMove(1)}>
               {icon("M12 5v14M19 12l-7 7-7-7")}
             </button>
             <span className="q-divider" aria-hidden="true" />
-            <button type="button" className="icon-btn" title="Duplicate" aria-label="Duplicate question" onClick={onDuplicate}>
+            <button type="button" className="icon-btn" title={text.duplicate} aria-label={text.duplicateLabel} onClick={onDuplicate}>
               {icon("M8 8h12v12H8z M16 8V4H4v12h4")}
             </button>
-            <button type="button" className="icon-btn icon-btn-danger" title="Delete" aria-label="Delete question" onClick={onDelete}>
+            <button type="button" className="icon-btn icon-btn-danger" title={t.common.actions.delete} aria-label={text.deleteLabel} onClick={onDelete}>
               {icon("M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3")}
             </button>
           </div>

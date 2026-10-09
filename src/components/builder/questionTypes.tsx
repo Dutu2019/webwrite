@@ -2,22 +2,25 @@
 
 import type { ReactElement, ReactNode } from "react";
 import { QUESTION_TYPES } from "@/lib/constants";
-import { IdeasEditor, newOptionId, OptionsEditor, ReferenceField, type EditorProps } from "./fields";
+import type { Messages } from "@/lib/i18n/messages";
+import { blankOption, IdeasEditor, newOptionId, OptionsEditor, ReferenceField, type EditorProps } from "./fields";
 import type { DraftErrors, QuestionDraft, QuestionType, TeacherQuestion, TypePayload } from "./types";
+
+/** Validation messages in the current language (`t.builder.errors`). */
+export type ErrorText = Messages["builder"]["errors"];
 
 /**
  * Everything the builder needs to know about one kind of question.
- * To add a type: add its id to QUESTION_TYPES (src/lib/constants.ts) and an entry here.
+ * To add a type: add its id to QUESTION_TYPES (src/lib/constants.ts), an entry here,
+ * and its label and description under `types` in src/lib/i18n/messages/builder.ts.
  */
 export interface QuestionTypeDef {
   id: QuestionType;
-  label: string;
-  description: string;
   icon: ReactNode;
   /** Type-specific part of the card, under the prompt. */
   Editor: (props: EditorProps) => ReactElement;
   /** Errors for the type-specific fields (the prompt is checked for every type). */
-  validate: (draft: QuestionDraft) => DraftErrors;
+  validate: (draft: QuestionDraft, text: ErrorText) => DraftErrors;
   /** Fields this type contributes to the API's question input. */
   toPayload: (draft: QuestionDraft) => TypePayload;
   /** How students will answer, shown in the collapsed card. */
@@ -42,27 +45,15 @@ const passthroughCriteria = (draft: QuestionDraft): TypePayload => ({
 export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
   SHORT_ANSWER: {
     id: "SHORT_ANSWER",
-    label: "Short answer",
-    description: "A sentence or two, checked against a model answer.",
     icon: svg(<path d="M4 9h16M4 15h9" />),
     answerPreview: "line",
-    Editor: (props) => (
-      <ReferenceField
-        {...props}
-        label="Model answer"
-        help="What a complete answer says. Students never see it."
-        placeholder="e.g. Because the treaty transferred sovereignty to…"
-        rows={2}
-      />
-    ),
-    validate: (d) => requireReference(d, "* please add a model answer"),
+    Editor: (props) => <ReferenceField {...props} kind="SHORT_ANSWER" rows={2} />,
+    validate: (d, text) => requireReference(d, text.reference),
     toPayload: passthroughCriteria,
   },
 
   KEY_IDEAS: {
     id: "KEY_IDEAS",
-    label: "Key ideas",
-    description: "An explanation that must include specific ideas; Gemma tracks each one.",
     icon: svg(
       <>
         <path d="M9 18h6M10 21h4" />
@@ -72,20 +63,14 @@ export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
     answerPreview: "box",
     Editor: (props) => (
       <>
-        <ReferenceField
-          {...props}
-          label="Model answer"
-          help="A full answer covering every idea. Students never see it."
-          placeholder="e.g. Civil disobedience is public, non-violent law-breaking that…"
-          rows={3}
-        />
+        <ReferenceField {...props} kind="KEY_IDEAS" />
         <IdeasEditor {...props} />
       </>
     ),
-    validate: (d) => {
-      const errors: DraftErrors = requireReference(d, "* please add a model answer");
-      if (!d.ideas.length) errors.ideas = "* add at least one key idea";
-      const ideaErrors = d.ideas.map((idea) => (idea.text.trim() ? undefined : "* describe this idea or remove it"));
+    validate: (d, text) => {
+      const errors = requireReference(d, text.reference);
+      if (!d.ideas.length) errors.ideas = text.noIdeas;
+      const ideaErrors = d.ideas.map((idea) => (idea.text.trim() ? undefined : text.emptyIdea));
       if (ideaErrors.some(Boolean)) errors.ideaErrors = ideaErrors;
       return errors;
     },
@@ -102,27 +87,15 @@ export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
 
   ESSAY: {
     id: "ESSAY",
-    label: "Essay",
-    description: "A longer argument, judged against your rubric.",
     icon: svg(<path d="M4 6h16M4 10h16M4 14h16M4 18h10" />),
     answerPreview: "box",
-    Editor: (props) => (
-      <ReferenceField
-        {...props}
-        label="Rubric"
-        help="What a strong essay does, one point per line. Students never see it."
-        placeholder={"1. Takes a clear position.\n2. Gives a principled argument.\n3. Addresses a counterargument."}
-        rows={5}
-      />
-    ),
-    validate: (d) => requireReference(d, "* please add a rubric"),
+    Editor: (props) => <ReferenceField {...props} kind="ESSAY" rows={5} />,
+    validate: (d, text) => requireReference(d, text.rubric),
     toPayload: passthroughCriteria,
   },
 
   MULTIPLE_CHOICE: {
     id: "MULTIPLE_CHOICE",
-    label: "Multiple choice",
-    description: "Students pick from options; marked exactly, no AI needed.",
     icon: svg(
       <>
         <circle cx="6" cy="7" r="2" />
@@ -132,18 +105,19 @@ export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
     ),
     answerPreview: "choices",
     Editor: (props) => <OptionsEditor {...props} />,
-    validate: (d) => {
+    validate: (d, text) => {
       const errors: DraftErrors = {};
-      if (d.options.length < 2) errors.options = "* add at least two options";
-      else if (!d.options.some((o) => o.correct)) errors.options = "* tick the correct option";
-      const optionErrors = d.options.map((o) => (o.text.trim() ? undefined : "* write this option or remove it"));
+      if (d.options.length < 2) errors.options = text.tooFewOptions;
+      else if (!d.options.some((o) => o.correct)) errors.options = text.noCorrectOption;
+      const optionErrors = d.options.map((o) => (o.text.trim() ? undefined : text.emptyOption));
       if (optionErrors.some(Boolean)) errors.optionErrors = optionErrors;
       return errors;
     },
     toPayload: (d) => {
       const options = d.options.map((o) => ({ id: o.id, text: o.text.trim(), correct: o.correct }));
       return {
-        // The API needs a reference; for choices it records the key for teachers
+        // The API needs a reference; for choices it records the key for teachers.
+        // Stored data rather than UI text, so it stays the same whatever the interface language.
         reference: `Correct: ${options.filter((o) => o.correct).map((o) => o.text).join("; ") || "(none)"}`,
         options,
       };
@@ -151,14 +125,12 @@ export const QUESTION_TYPE_DEFS: Record<QuestionType, QuestionTypeDef> = {
   },
 };
 
-export const TYPE_LIST = QUESTION_TYPES.map((t) => QUESTION_TYPE_DEFS[t]);
+export const TYPE_LIST = QUESTION_TYPES.map((type) => QUESTION_TYPE_DEFS[type]);
 
 // ---------------------------------------------------------------- Drafts
 
 const newUid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `q-${Date.now()}-${Math.random()}`;
-
-const blankOption = () => ({ id: newOptionId(), text: "", correct: false });
 
 /** Change a draft's type, keeping what was written and seeding the new type's fields. */
 export function switchType(d: QuestionDraft, type: QuestionType): QuestionDraft {
@@ -210,11 +182,11 @@ export const isBlankDraft = (d: QuestionDraft) =>
   d.ideas.every((i) => !i.text.trim() && !i.hint.trim()) &&
   d.options.every((o) => !o.text.trim() && !o.correct);
 
-/** All errors for one draft; empty object when it can be saved. */
-export function validateDraft(d: QuestionDraft): DraftErrors {
-  const errors = QUESTION_TYPE_DEFS[d.type].validate(d);
-  if (!d.prompt.trim()) errors.prompt = "* please write the question";
-  if (!Number.isInteger(d.points) || d.points < 1 || d.points > 1000) errors.points = "* 1–1000 points";
+/** All errors for one draft, in the current language; empty object when it can be saved. */
+export function validateDraft(d: QuestionDraft, text: ErrorText): DraftErrors {
+  const errors = QUESTION_TYPE_DEFS[d.type].validate(d, text);
+  if (!d.prompt.trim()) errors.prompt = text.prompt;
+  if (!Number.isInteger(d.points) || d.points < 1 || d.points > 1000) errors.points = text.points;
   return errors;
 }
 

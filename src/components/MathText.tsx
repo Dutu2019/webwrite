@@ -2,6 +2,7 @@
 
 import "katex/dist/katex.min.css";
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import { autoMath } from "./autoMath";
 
 type Katex = typeof import("katex").default;
@@ -92,10 +93,11 @@ export default function MathText({ text, inline = false }: { text: string; inlin
 
 /** Rendered preview under an input, shown only when the text contains math. */
 export function MathPreview({ text }: { text: string }) {
+  const { t } = useI18n();
   if (!hasMath(text)) return null;
   return (
-    <div className="math-preview" aria-label="Rendered preview">
-      <span className="math-preview-label">Preview</span>
+    <div className="math-preview" aria-label={t.common.mathPreview.aria}>
+      <span className="math-preview-label">{t.common.mathPreview.label}</span>
       <div className="math-preview-body">
         <MathText text={text} />
       </div>

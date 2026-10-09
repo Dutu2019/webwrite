@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, hasSession, logout, type Course, type StudentAssignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import LanguageToggle from "../LanguageToggle";
 import Modal from "../Modal";
 import ClassTree from "../professor/ClassTree";
 import SortButton, { sortByDueDate, type SortOrder } from "../SortButton";
@@ -19,8 +21,11 @@ type StudentCourse = Course & { assignments: StudentAssignment[] };
 export default function StudentWorkspace() {
   const router = useRouter();
   const user = useSession("STUDENT");
+  const { t } = useI18n();
+  const s = t.student.workspace;
   const [courses, setCourses] = useState<StudentCourse[] | null>(null);
-  const [loadError, setLoadError] = useState("");
+  // Error messages are kept as keys so they follow a language switch
+  const [loadError, setLoadError] = useState<"loadError" | "refreshError" | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [joining, setJoining] = useState(false);
@@ -51,7 +56,7 @@ export default function StudentWorkspace() {
         const fromUrl = new URLSearchParams(window.location.search).get("course");
         if (fromUrl && list.some((c) => c.id === fromUrl)) openCourse(fromUrl);
       })
-      .catch(() => setLoadError("Couldn't load your classes."));
+      .catch(() => setLoadError("loadError"));
   }, [load, openCourse]);
 
   const sortedCourses = useMemo(
@@ -74,7 +79,7 @@ export default function StudentWorkspace() {
     try {
       await load();
     } catch {
-      setLoadError("Joined, but couldn't refresh your classes. Reload the page.");
+      setLoadError("refreshError");
     }
     openCourse(course.id);
   }
@@ -84,15 +89,16 @@ export default function StudentWorkspace() {
     router.replace("/");
   }
 
-  if (!user) return <main className="dash"><p className="dash-muted">Loading…</p></main>;
+  if (!user) return <main className="dash"><p className="dash-muted">{t.common.status.loading}</p></main>;
 
   return (
     <div className="prof">
-      <header className="prof-topbar">
-        <span className="brand brand-sm">WebWrite</span>
-        <div className="prof-user">
-          <span>{user.name}</span>
-          <button className="link-btn" onClick={onLogout}>Log out</button>
+      <header className="prof-topbar student-topbar">
+        <span className="brand brand-sm">{t.common.appName}</span>
+        <div className="prof-user student-user">
+          <span className="student-user-name" title={user.name}>{user.name}</span>
+          <LanguageToggle />
+          <button type="button" className="link-btn" onClick={onLogout}>{t.common.actions.logout}</button>
         </div>
       </header>
 
@@ -103,28 +109,28 @@ export default function StudentWorkspace() {
         onToggle={toggle}
         onOpenCourse={openCourse}
         onNewClass={() => setJoining(true)}
-        newClassLabel="Join a class"
+        newClassLabel={s.joinClass}
         assignmentHref={(a) => `/student/assignments/${a.id}`}
       />
 
       <main className="prof-main">
-        {loadError && <p className="error">{loadError}</p>}
-        {!courses && !loadError && <p className="dash-muted">Loading your classes…</p>}
+        {loadError && <p className="error">{s[loadError]}</p>}
+        {!courses && !loadError && <p className="dash-muted">{s.loading}</p>}
 
         {courses && !selectedCourse && (
           <div className="empty-state">
             <span className="fleuron" aria-hidden="true">❦</span>
-            <p>{courses.length ? "Open a class from the left, or join another." : "Join your first class with the code your professor gave you."}</p>
-            <button className="btn btn-inline btn-large" onClick={() => setJoining(true)}>Join a class</button>
+            <p>{courses.length ? s.openOrJoin : s.joinFirst}</p>
+            <button type="button" className="btn btn-inline btn-large" onClick={() => setJoining(true)}>{s.joinClass}</button>
           </div>
         )}
 
         {selectedCourse && (
           <section className="class-view" aria-labelledby="class-title">
-            <header className="class-header">
+            <header className="class-header student-class-header">
               <div>
                 <h1 id="class-title">{selectedCourse.name}</h1>
-                {selectedCourse.teacher && <p className="class-code">Taught by {selectedCourse.teacher.name}</p>}
+                {selectedCourse.teacher && <p className="class-code">{s.taughtBy(selectedCourse.teacher.name)}</p>}
                 {selectedCourse.description && <p className="class-desc">{selectedCourse.description}</p>}
               </div>
             </header>
@@ -132,7 +138,7 @@ export default function StudentWorkspace() {
             {selectedCourse.assignments.length === 0 ? (
               <div className="empty-state">
                 <span className="fleuron" aria-hidden="true">❦</span>
-                <p>No assignments posted yet.</p>
+                <p>{s.noAssignments}</p>
               </div>
             ) : (
               <>
@@ -148,7 +154,7 @@ export default function StudentWorkspace() {
         )}
       </main>
 
-      <Modal open={joining} title="Join a class" onClose={() => setJoining(false)}>
+      <Modal open={joining} title={s.joinClass} onClose={() => setJoining(false)}>
         <JoinClassForm onJoined={onJoined} onCancel={() => setJoining(false)} />
       </Modal>
     </div>
