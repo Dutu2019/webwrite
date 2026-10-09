@@ -1,5 +1,8 @@
 // Browser client for the backend API (see API.md). Same-origin requests to /api/*.
 
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
+import { translateServerText } from "@/lib/i18n/serverText";
+
 export type Role = "TEACHER" | "STUDENT";
 
 export interface User {
@@ -67,6 +70,12 @@ export class ApiError extends Error {
   }
 }
 
+// The API answers in English; error messages are shown in the interface language.
+let apiLocale: Locale = DEFAULT_LOCALE;
+export function setApiLocale(locale: Locale) {
+  apiLocale = locale;
+}
+
 const TOKEN_KEY = "webwrite.token";
 const REFRESH_KEY = "webwrite.refreshToken";
 
@@ -105,7 +114,8 @@ async function parse<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const err = data?.error;
-    throw new ApiError(res.status, err?.code ?? "INTERNAL_ERROR", err?.message ?? "Something went wrong", err?.details);
+    const message = translateServerText(err?.message ?? "Something went wrong", apiLocale);
+    throw new ApiError(res.status, err?.code ?? "INTERNAL_ERROR", message, err?.details);
   }
   return data as T;
 }

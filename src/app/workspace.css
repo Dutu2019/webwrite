@@ -63,18 +63,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
 .modal-header h2 {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-display), Georgia, serif;
   font-size: 1.8rem;
   font-weight: 600;
   color: var(--accent);
 }
 .modal-close {
+  flex: none;
   border: 0;
   background: none;
   font-size: 1.6rem;
@@ -84,13 +88,14 @@
 }
 .modal-close:hover { color: var(--ink); }
 .modal-note { margin: 0 0 16px; font-size: 0.88rem; color: var(--muted); }
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+/* Wraps when French labels don't fit on one line */
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 /* ------------------------------------------------------- Professor layout */
 
 .prof {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr); /* long words can't widen the page */
   grid-template-rows: auto 1fr;
   min-height: 100vh;
   min-height: 100dvh;
@@ -101,10 +106,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   padding: 14px 28px;
   border-bottom: 1px solid var(--line);
 }
-.prof-user { display: flex; align-items: center; gap: 18px; color: var(--muted); }
+.prof-topbar .brand { flex: none; }
+.prof-user { display: flex; align-items: center; gap: 18px; min-width: 0; color: var(--muted); }
+.prof-user > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prof-user > button { flex: none; white-space: nowrap; }
 
 /* Class tree */
 .tree {
@@ -120,13 +129,16 @@
   padding: 0 6px 10px;
 }
 .tree-header h2 {
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-display), Georgia, serif;
   font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: 0.03em;
 }
 .tree-add {
+  flex: none;
   width: 28px;
   height: 28px;
   border: 1px solid var(--gold);
@@ -141,7 +153,7 @@
 
 .tree-list, .tree-children { list-style: none; margin: 0; padding: 0; }
 .tree-children { margin: 2px 0 8px 22px; padding-left: 10px; border-left: 1px solid var(--line); }
-.tree-empty { padding: 4px 8px; font-size: 0.85rem; font-style: italic; color: var(--muted); }
+.tree-empty { padding: 4px 8px; overflow-wrap: anywhere; font-size: 0.85rem; font-style: italic; color: var(--muted); }
 
 .tree-row { display: flex; align-items: center; border-radius: var(--radius); }
 .tree-row.is-selected { background: var(--paper); }
@@ -171,8 +183,10 @@
   cursor: pointer;
 }
 .tree-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.tree-code { flex: none; font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); }
+.tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* The code keeps its natural width (the name truncates instead); only an unusually
+   long code is capped, with an ellipsis, so it can't crowd out the class name */
+.tree-code { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; letter-spacing: 0.08em; color: var(--muted); }
 
 .tree-leaf-row { display: flex; align-items: center; }
 .tree-leaf {
@@ -190,6 +204,7 @@
 .status-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .status-pill {
   flex: none;
+  white-space: nowrap;
   padding: 3px 12px;
   border-radius: 999px;
   font-size: 0.78rem;
@@ -204,7 +219,7 @@
 .status-pill.status-closed  { color: var(--accent); background: #f0d9d3; }
 
 /* Main column */
-.prof-main { padding: 32px 40px 64px; overflow-y: auto; }
+.prof-main { min-width: 0; padding: 32px 40px 64px; overflow-y: auto; }
 
 .empty-state {
   display: grid;
@@ -214,7 +229,7 @@
   text-align: center;
   color: var(--muted);
 }
-.empty-state p { margin: 0 0 8px; font-style: italic; }
+.empty-state p { max-width: 100%; margin: 0 0 8px; font-style: italic; overflow-wrap: anywhere; }
 .fleuron { font-size: 2.4rem; line-height: 1; color: var(--gold); }
 
 .class-view { max-width: 820px; }
@@ -227,14 +242,18 @@
   margin-bottom: 24px;
   border-bottom: 1px solid var(--line);
 }
+.class-header > div { flex: 1 1 auto; min-width: 0; }
+.class-header > .btn { flex: none; white-space: nowrap; }
 .class-header h1 {
+  min-width: 0;
   margin: 0 0 6px;
+  overflow-wrap: anywhere;
   font-family: var(--font-display), Georgia, serif;
   font-size: 2.6rem;
   font-weight: 600;
   line-height: 1.1;
 }
-.class-code { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--muted); }
+.class-code { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .class-code code {
   padding: 2px 10px;
   border: 1px dashed var(--gold);
@@ -243,13 +262,15 @@
   letter-spacing: 0.12em;
   color: var(--ink);
   background: var(--field);
+  overflow-wrap: anywhere;
 }
-.class-desc { margin: 12px 0 0; max-width: 60ch; }
+.class-desc { margin: 12px 0 0; max-width: 60ch; overflow-wrap: anywhere; }
 .class-title-row { display: flex; align-items: center; gap: 8px; }
 .class-code-help { margin: 4px 0 0; font-size: 0.85rem; font-style: italic; color: var(--muted); }
 
 /* Pencil edit button */
 .icon-btn {
+  flex: none;
   display: inline-grid;
   place-items: center;
   width: 32px;
@@ -301,11 +322,14 @@
 .field-help { margin: 4px 0 0; font-size: 0.82rem; font-style: italic; color: var(--muted); }
 
 /* Assignment stack: compact rows, sorted by due date */
+/* minmax(0, …): the column stays as wide as the container, so a card's one-line
+   subtitle truncates with an ellipsis instead of stretching the card */
 .assignment-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .assignment-card {
   display: flex;
+  flex-wrap: wrap; /* on narrow screens the side controls drop under the title */
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 9px 12px 9px 18px;
   background: var(--field);
   border: 1px solid var(--line);
@@ -315,13 +339,14 @@
   transition: box-shadow .2s;
 }
 .assignment-card.is-selected { box-shadow: 0 0 0 3px rgba(176, 141, 87, 0.25); }
-.assignment-main { flex: 1; min-width: 0; }
+.assignment-main { flex: 1 1 14rem; min-width: 0; }
 .assignment-main h3 {
   margin: 0;
   font-family: var(--font-display), Georgia, serif;
   font-size: 1.3rem;
   font-weight: 600;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 .assignment-sub {
   margin: 1px 0 0;
@@ -345,12 +370,14 @@
 .assignment-main h3 a:hover { color: var(--accent); text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 3px; }
 .assignment-count { font-weight: 600; color: var(--ink); }
 .assignment-error { margin: 2px 0 0; min-height: 0; }
-.assignment-side { display: flex; flex: none; align-items: center; gap: 12px; }
+.assignment-side { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; max-width: 100%; margin-left: auto; }
+.assignment-side .btn { white-space: nowrap; }
 .assignment-progress { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
 .assignment-progress strong { color: var(--ink); font-weight: 600; }
 
 @media (max-width: 760px) {
-  .prof { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+  .prof { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr; }
+  .prof-topbar { padding: 12px 16px; }
   .tree { border-right: 0; border-bottom: 1px solid var(--line); }
   .prof-main { padding: 24px 16px 48px; }
   .class-header { flex-direction: column; }
@@ -368,4 +395,4 @@
   border-radius: var(--radius);
   background: #fbefec;
 }
-.delete-confirm p { margin: 0 0 10px; font-size: 0.92rem; }
+.delete-confirm p { margin: 0 0 10px; font-size: 0.92rem; overflow-wrap: anywhere; }

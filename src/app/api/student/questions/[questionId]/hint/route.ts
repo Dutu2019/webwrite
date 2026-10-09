@@ -40,7 +40,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       answerText = latest?.answerText ?? "";
     }
 
-    const hint = await hintWithGemma(await hintInput(loaded, answerText, attempts + 1));
+    const input = await hintInput(loaded, answerText, attempts + 1);
+    const hint = await hintWithGemma({ ...input, language: body.locale });
     return ok({ hint });
   });
 }

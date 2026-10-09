@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, hasSession, logout, type Assignment, type Course } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import LanguageToggle from "../LanguageToggle";
 import Modal from "../Modal";
 import SortButton, { sortByDueDate, type SortOrder } from "../SortButton";
 import AssignmentCard from "./AssignmentCard";
@@ -21,9 +23,11 @@ type Dialog =
 
 export default function ProfessorWorkspace() {
   const router = useRouter();
+  const { t } = useI18n();
+  const tw = t.professor.workspace;
   const user = useSession("TEACHER");
   const [courses, setCourses] = useState<CourseNode[] | null>(null);
-  const [loadError, setLoadError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -50,7 +54,7 @@ export default function ProfessorWorkspace() {
         const fromUrl = new URLSearchParams(window.location.search).get("course");
         if (fromUrl && withAssignments.some((c) => c.id === fromUrl)) openCourse(fromUrl);
       } catch {
-        setLoadError("Couldn't load your classes.");
+        setLoadFailed(true);
       }
     })();
   }, []);
@@ -129,15 +133,16 @@ export default function ProfessorWorkspace() {
     router.replace("/");
   }
 
-  if (!user) return <main className="dash"><p className="dash-muted">Loading…</p></main>;
+  if (!user) return <main className="dash"><p className="dash-muted">{t.common.status.loading}</p></main>;
 
   return (
     <div className="prof">
       <header className="prof-topbar">
-        <span className="brand brand-sm">WebWrite</span>
+        <span className="brand brand-sm">{t.common.appName}</span>
         <div className="prof-user">
-          <span>{user.name}</span>
-          <button className="link-btn" onClick={onLogout}>Log out</button>
+          <span title={user.name}>{user.name}</span>
+          <LanguageToggle />
+          <button className="link-btn" onClick={onLogout}>{t.common.actions.logout}</button>
         </div>
       </header>
 
@@ -148,20 +153,20 @@ export default function ProfessorWorkspace() {
         onToggle={toggle}
         onOpenCourse={openCourse}
         onNewClass={() => setDialog({ kind: "class" })}
-        newClassLabel="Create class"
+        newClassLabel={tw.createClass}
         assignmentHref={(a) => `/teacher/assignments/${a.id}`}
       />
 
       <main className="prof-main">
-        {loadError && <p className="error">{loadError}</p>}
+        {loadFailed && <p className="error">{tw.loadError}</p>}
 
-        {!courses && !loadError && <p className="dash-muted">Loading your classes…</p>}
+        {!courses && !loadFailed && <p className="dash-muted">{tw.loadingClasses}</p>}
 
         {courses && !selectedCourse && (
           <div className="empty-state">
             <span className="fleuron" aria-hidden="true">❦</span>
-            <p>{courses.length ? "Open a class from the left, or begin a new one." : "Begin by creating your first class."}</p>
-            <button className="btn btn-inline btn-large" onClick={() => setDialog({ kind: "class" })}>Create class</button>
+            <p>{courses.length ? tw.emptyWithClasses : tw.emptyNoClasses}</p>
+            <button className="btn btn-inline btn-large" onClick={() => setDialog({ kind: "class" })}>{tw.createClass}</button>
           </div>
         )}
 
@@ -171,46 +176,46 @@ export default function ProfessorWorkspace() {
               <div>
                 <div className="class-title-row">
                   <h1 id="class-title">{selectedCourse.name}</h1>
-                  <EditButton label="Edit class" onClick={() => setDialog({ kind: "class", course: selectedCourse })} />
+                  <EditButton label={tw.editClass} onClick={() => setDialog({ kind: "class", course: selectedCourse })} />
                 </div>
                 <p className="class-code">
-                  Join code <code>{selectedCourse.joinCode}</code>
-                  <CopyButton text={selectedCourse.joinCode} label="Copy the join code to share with students" />
+                  {tw.joinCode} <code>{selectedCourse.joinCode}</code>
+                  <CopyButton text={selectedCourse.joinCode} label={tw.copyJoinCode} />
                 </p>
-                <p className="class-code-help">Share this code with students so they can join the class.</p>
+                <p className="class-code-help">{tw.joinCodeHelp}</p>
                 {selectedCourse.description && <p className="class-desc">{selectedCourse.description}</p>}
               </div>
               {selectedCourse.assignments.length > 0 && (
-                <button className="btn btn-inline" onClick={() => setDialog({ kind: "assignment" })}>New assignment</button>
+                <button className="btn btn-inline" onClick={() => setDialog({ kind: "assignment" })}>{tw.newAssignment}</button>
               )}
             </header>
 
             {selectedCourse.assignments.length === 0 ? (
               <div className="empty-state">
                 <span className="fleuron" aria-hidden="true">❦</span>
-                <p>No assignments in this class yet.</p>
+                <p>{tw.noAssignments}</p>
                 <button className="btn btn-inline btn-large" onClick={() => setDialog({ kind: "assignment" })}>
-                  Create assignment
+                  {tw.createAssignment}
                 </button>
               </div>
             ) : (
               <>
-              <SortButton order={sortOrder} onChange={setSortOrder} />
-              <div className="assignment-stack">
-                {selectedCourse.assignments.map((a) => (
-                  <AssignmentCard
-                    key={a.id}
-                    ref={(el) => {
-                      if (el) cardRefs.current.set(a.id, el);
-                      else cardRefs.current.delete(a.id);
-                    }}
-                    assignment={a}
-                    selected={a.id === selectedAssignmentId}
-                    onChange={onAssignmentChanged}
-                    onEdit={() => setDialog({ kind: "assignment", assignment: a })}
-                  />
-                ))}
-              </div>
+                <SortButton order={sortOrder} onChange={setSortOrder} />
+                <div className="assignment-stack">
+                  {selectedCourse.assignments.map((a) => (
+                    <AssignmentCard
+                      key={a.id}
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(a.id, el);
+                        else cardRefs.current.delete(a.id);
+                      }}
+                      assignment={a}
+                      selected={a.id === selectedAssignmentId}
+                      onChange={onAssignmentChanged}
+                      onEdit={() => setDialog({ kind: "assignment", assignment: a })}
+                    />
+                  ))}
+                </div>
               </>
             )}
           </section>
@@ -219,7 +224,7 @@ export default function ProfessorWorkspace() {
 
       <Modal
         open={dialog?.kind === "class"}
-        title={dialog?.kind === "class" && dialog.course ? "Edit class" : "Create class"}
+        title={dialog?.kind === "class" && dialog.course ? tw.editClass : tw.createClass}
         onClose={() => setDialog(null)}
       >
         {dialog?.kind === "class" && (
@@ -229,7 +234,7 @@ export default function ProfessorWorkspace() {
 
       <Modal
         open={dialog?.kind === "assignment"}
-        title={dialog?.kind === "assignment" && dialog.assignment ? "Edit assignment" : "Create assignment"}
+        title={dialog?.kind === "assignment" && dialog.assignment ? tw.editAssignment : tw.createAssignment}
         onClose={() => setDialog(null)}
       >
         {dialog?.kind === "assignment" && (dialog.assignment || selectedCourse) && (

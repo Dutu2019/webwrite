@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 const INTERVAL_MS = 6000;
 
@@ -35,6 +36,7 @@ const BUBBLES: Bubble[] = [
 
 /** Left column: library photos crossfading in a loop, edged by a static wave. */
 export default function Gallery({ images }: { images: string[] }) {
+  const { t } = useI18n();
   const [current, setCurrent] = useState(0);
   // Furthest slide shown so far. Photos load one slide ahead of it rather than all at once.
   const [reached, setReached] = useState(0);
@@ -59,7 +61,7 @@ export default function Gallery({ images }: { images: string[] }) {
 
       {images.length === 0 && (
         <p className="gallery-empty">
-          Add photos to <code>public/gallery/</code>
+          {t.common.galleryEmpty} <code>public/gallery/</code>
         </p>
       )}
 

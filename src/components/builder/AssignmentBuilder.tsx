@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api, ApiError, hasSession, type Assignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import LanguageToggle from "../LanguageToggle";
 import StudentResults from "../professor/StudentResults";
 import QuestionCard from "./QuestionCard";
 import {
@@ -19,13 +21,11 @@ import {
 import type { DraftErrors, QuestionDraft, QuestionType, TeacherQuestion } from "./types";
 
 type FullAssignment = Assignment & { questions: TeacherQuestion[] };
-type Notice = { kind: "error" | "info"; text: string } | null;
+// Kinds rather than text, so messages follow a language switch (API errors arrive translated)
+type Notice = { kind: "saved" } | { kind: "needsFixing" } | { kind: "error"; text: string } | null;
+type LoadError = "" | "notFound" | "loadFailed";
 
-const STATUS_LABEL = { CREATED: "Created", POSTED: "Posted", CLOSED: "Closed" } as const;
-
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-  weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-});
+const NO_ERRORS: DraftErrors = {};
 
 /**
  * Google-Forms-style construction mode for one assignment's questions.
@@ -33,12 +33,14 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
  */
 export default function AssignmentBuilder({ assignmentId }: { assignmentId: string }) {
   const user = useSession("TEACHER");
+  const { t, fmt } = useI18n();
   const [assignment, setAssignment] = useState<FullAssignment | null>(null);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState<LoadError>("");
   const [drafts, setDrafts] = useState<QuestionDraft[]>([]);
   const [savedSnapshot, setSavedSnapshot] = useState("[]");
   const [activeUid, setActiveUid] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, DraftErrors>>({});
+  // Questions that blocked a save; their errors then update live as they're edited
+  const [flagged, setFlagged] = useState<ReadonlySet<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   // Drag and drop: the grip arms a card, dragging it shows where it will land
@@ -73,9 +75,7 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
         setDrafts(initial);
         setActiveUid(initial[0]?.uid ?? null);
       })
-      .catch((err) =>
-        setLoadError(err instanceof ApiError && err.status === 404 ? "Assignment not found." : "Couldn't load the assignment."),
-      );
+      .catch((err) => setLoadError(err instanceof ApiError && err.status === 404 ? "notFound" : "loadFailed"));
   }, [assignmentId]);
 
   // Warn before leaving with unsaved questions
@@ -93,10 +93,10 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
 
   // ------------------------------------------------------------ Editing
 
+  const errorsFor = (d: QuestionDraft) => (flagged.has(d.uid) ? validateDraft(d, t.builder.errors) : NO_ERRORS);
+
   function update(uid: string, next: QuestionDraft) {
     setDrafts((list) => list.map((d) => (d.uid === uid ? next : d)));
-    // Re-check a question live once it has shown errors
-    if (errors[uid]) setErrors((all) => ({ ...all, [uid]: validateDraft(next) }));
   }
 
   function insertAfterActive(draft: QuestionDraft) {
@@ -154,9 +154,9 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
     const rest = drafts.filter((d) => d.uid !== uid);
     setDrafts(rest);
     setActiveUid(rest[Math.min(i, rest.length - 1)]?.uid ?? null);
-    setErrors((all) => {
-      const next = { ...all };
-      delete next[uid];
+    setFlagged((all) => {
+      const next = new Set(all);
+      next.delete(uid);
       return next;
     });
   }
@@ -165,16 +165,11 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
 
   async function save() {
     setNotice(null);
-    const found: Record<string, DraftErrors> = {};
-    for (const d of drafts) {
-      const e = validateDraft(d);
-      if (hasErrors(e)) found[d.uid] = e;
-    }
-    setErrors(found);
-    const firstBad = drafts.find((d) => found[d.uid]);
-    if (firstBad) {
-      setActiveUid(firstBad.uid);
-      setNotice({ kind: "error", text: "Some questions need attention before saving." });
+    const bad = drafts.filter((d) => hasErrors(validateDraft(d, t.builder.errors)));
+    setFlagged(new Set(bad.map((d) => d.uid)));
+    if (bad.length) {
+      setActiveUid(bad[0].uid);
+      setNotice({ kind: "needsFixing" });
       return;
     }
 
@@ -186,9 +181,9 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
       });
       setAssignment(saved);
       setSavedSnapshot(JSON.stringify(payload));
-      setNotice({ kind: "info", text: "Saved." });
+      setNotice({ kind: "saved" });
     } catch (err) {
-      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Couldn't save. Please try again." });
+      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : t.builder.saveFailed });
     } finally {
       setSaving(false);
     }
@@ -200,49 +195,52 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
       const { assignment: next } = await api<{ assignment: Assignment }>(`/api/assignments/${assignmentId}/publish`, "POST", { published });
       setAssignment((a) => (a ? { ...a, ...next } : a));
     } catch (err) {
-      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Couldn't change visibility." });
+      setNotice({ kind: "error", text: err instanceof ApiError ? err.message : t.builder.visibilityFailed });
     }
   }
 
-  function leave(e: React.MouseEvent) {
-    if (dirty && !window.confirm("You have unsaved questions. Leave without saving?")) e.preventDefault();
+  function leave(e: MouseEvent) {
+    if (dirty && !window.confirm(t.builder.confirmLeave)) e.preventDefault();
   }
 
   // ------------------------------------------------------------- Render
 
-  if (!user) return <main className="dash"><p className="dash-muted">Loading…</p></main>;
+  if (!user) return <main className="dash"><p className="dash-muted">{t.common.status.loading}</p></main>;
 
   const backHref = assignment ? `/teacher?course=${assignment.courseId}` : "/teacher";
+  const errorNotice = notice?.kind === "error" ? notice.text : notice?.kind === "needsFixing" ? t.builder.needsFixing : "";
+  const totalPoints = drafts.reduce((sum, d) => sum + (Number.isFinite(d.points) ? d.points : 0), 0);
 
   return (
-    <div className="builder">
+    <div className="builder builder-editor">
       <header className="builder-topbar">
-        <Link className="link-btn" href={backHref} onClick={leave}>← Back to class</Link>
+        <Link className="link-btn" href={backHref} onClick={leave}>{t.builder.backToClass}</Link>
         <div className="builder-topbar-actions">
           <span className="save-state" aria-live="polite">
-            {saving ? "Saving…" : dirty ? "Unsaved changes" : notice?.kind === "info" ? notice.text : ""}
+            {saving ? t.common.actions.saving : dirty ? t.builder.unsavedChanges : notice?.kind === "saved" ? t.builder.saved : ""}
           </span>
           {assignment?.status === "CREATED" && (
             <button
               type="button"
               className="btn btn-ghost btn-small"
               disabled={dirty || savedQuestionCount === 0}
-              title={dirty ? "Save your questions first" : savedQuestionCount === 0 ? "Add and save a question first" : undefined}
+              title={dirty ? t.builder.saveFirst : savedQuestionCount === 0 ? t.builder.addQuestionFirst : undefined}
               onClick={() => setPublic(true)}
             >
-              Make public
+              {t.builder.publish}
             </button>
           )}
           {!readOnly && (
             <button type="button" className="btn btn-inline btn-small" disabled={!dirty || saving} onClick={save}>
-              Save
+              {t.common.actions.save}
             </button>
           )}
+          <LanguageToggle />
         </div>
       </header>
 
-      {loadError && <p className="error builder-load-error">{loadError}</p>}
-      {!assignment && !loadError && <p className="dash-muted builder-load-error">Loading…</p>}
+      {loadError && <p className="error builder-load-error">{t.builder[loadError]}</p>}
+      {!assignment && !loadError && <p className="dash-muted builder-load-error">{t.common.status.loading}</p>}
 
       {assignment && (
         <div className="builder-body">
@@ -250,23 +248,22 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
             <section className="form-header-card">
               <div className="form-header-top">
                 <h1>{assignment.title}</h1>
-                <span className={`status-pill status-${assignment.status.toLowerCase()}`}>{STATUS_LABEL[assignment.status]}</span>
+                <span className={`status-pill status-${assignment.status.toLowerCase()}`}>{t.common.assignmentStatus[assignment.status]}</span>
               </div>
               {assignment.description && <p className="form-header-desc">{assignment.description}</p>}
               <p className="form-header-meta">
-                {assignment.dueAt ? `Due ${dateFormat.format(new Date(assignment.dueAt))}` : "No due date"} ·{" "}
-                {drafts.length} {drafts.length === 1 ? "question" : "questions"} ·{" "}
-                {drafts.reduce((sum, d) => sum + (Number.isFinite(d.points) ? d.points : 0), 0)} pts
+                {assignment.dueAt ? t.builder.dueOn(fmt.dateTime(assignment.dueAt)) : t.builder.noDueDate} ·{" "}
+                {t.builder.questionCount(drafts.length)} · {t.builder.points(totalPoints)}
               </p>
             </section>
 
             {assignment.published && (
-              <div className="view-tabs" role="tablist" aria-label="Assignment view">
+              <div className="view-tabs" role="tablist" aria-label={t.builder.tabs.label}>
                 <button type="button" role="tab" aria-selected={tab === "questions"} className={`view-tab${tab === "questions" ? " is-active" : ""}`} onClick={() => setTab("questions")}>
-                  Questions
+                  {t.builder.tabs.questions}
                 </button>
                 <button type="button" role="tab" aria-selected={tab === "students"} className={`view-tab${tab === "students" ? " is-active" : ""}`} onClick={() => setTab("students")}>
-                  Students
+                  {t.builder.tabs.students}
                 </button>
               </div>
             )}
@@ -277,23 +274,23 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
             <>
             {readOnly && (
               <div className="builder-banner" role="note">
-                <p>This assignment is public, so its questions are locked. Make it private to edit them; students won&apos;t see it until you make it public again.</p>
-                <button type="button" className="btn btn-ghost btn-small" onClick={() => setPublic(false)}>Make private</button>
+                <p>{t.builder.lockedBanner}</p>
+                <button type="button" className="btn btn-ghost btn-small" onClick={() => setPublic(false)}>{t.builder.unpublish}</button>
               </div>
             )}
 
-            {notice?.kind === "error" && <p className="error builder-notice" role="alert">{notice.text}</p>}
+            {errorNotice && <p className="error builder-notice" role="alert">{errorNotice}</p>}
 
             {drafts.length === 0 ? (
               <div className="builder-empty">
                 <span className="fleuron" aria-hidden="true">❦</span>
-                <p>Add your first question.</p>
+                <p>{t.builder.firstQuestion}</p>
                 <div className="type-picker">
-                  {TYPE_LIST.map((t) => (
-                    <button key={t.id} type="button" className="type-option" onClick={() => addQuestion(t.id)} disabled={readOnly}>
-                      {t.icon}
-                      <span className="type-option-label">{t.label}</span>
-                      <span className="type-option-desc">{t.description}</span>
+                  {TYPE_LIST.map(({ id, icon }) => (
+                    <button key={id} type="button" className="type-option" onClick={() => addQuestion(id)} disabled={readOnly}>
+                      {icon}
+                      <span className="type-option-label">{t.builder.types[id].label}</span>
+                      <span className="type-option-desc">{t.builder.types[id].description}</span>
                     </button>
                   ))}
                 </div>
@@ -338,7 +335,7 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
                       count={drafts.length}
                       active={d.uid === activeUid}
                       readOnly={readOnly}
-                      errors={errors[d.uid] ?? {}}
+                      errors={errorsFor(d)}
                       onGrip={() => setGrippedUid(d.uid)}
                       onActivate={() => setActiveUid(d.uid)}
                       onChange={(next) => update(d.uid, next)}
@@ -355,20 +352,16 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
           </div>
 
           {!readOnly && drafts.length > 0 && (
-            <aside className="builder-rail" aria-label="Add a question">
-              {TYPE_LIST.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="rail-btn"
-                  title={`Add ${t.label.toLowerCase()} question`}
-                  aria-label={`Add ${t.label.toLowerCase()} question`}
-                  onClick={() => addQuestion(t.id)}
-                >
-                  <span className="rail-plus" aria-hidden="true">+</span>
-                  {t.icon}
-                </button>
-              ))}
+            <aside className="builder-rail" aria-label={t.builder.addQuestion}>
+              {TYPE_LIST.map(({ id, icon }) => {
+                const label = t.builder.addTypedQuestion(t.builder.types[id].label);
+                return (
+                  <button key={id} type="button" className="rail-btn" title={label} aria-label={label} onClick={() => addQuestion(id)}>
+                    <span className="rail-plus" aria-hidden="true">+</span>
+                    {icon}
+                  </button>
+                );
+              })}
             </aside>
           )}
         </div>
