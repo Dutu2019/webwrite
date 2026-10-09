@@ -1,4 +1,5 @@
 import type { Assignment, Course, Question, Submission, User } from "@prisma/client";
+import { DEFAULT_CRITERIA } from "./constants";
 
 export function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -93,16 +94,20 @@ export function teacherQuestionDto(q: Question) {
 
 /**
  * Student view of a question — deliberately strips `reference` and `criteria`
- * so the answer key never leaves the server.
+ * so the answer key never leaves the server. Only positional idea labels
+ * ("Idea 1", …) are exposed, never the idea text.
  */
 export function studentQuestionDto(
-  q: Pick<Question, "id" | "order" | "prompt" | "points">,
+  q: Pick<Question, "id" | "order" | "prompt" | "points" | "criteria">,
 ) {
+  const ideaCount =
+    parseJson<unknown[] | null>(q.criteria, null)?.length || DEFAULT_CRITERIA.length;
   return {
     id: q.id,
     order: q.order,
     prompt: q.prompt,
     points: q.points,
+    ideas: Array.from({ length: ideaCount }, (_, i) => ({ label: `Idea ${i + 1}` })),
   };
 }
 
