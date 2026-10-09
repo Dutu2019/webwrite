@@ -169,10 +169,18 @@ Add these Environment Variables to the Vercel project (Production):
 - `GEMINI_API_KEY`
 - `GEMMA_MODEL` (optional)
 
-Then apply migrations with `npm run db:deploy` (from your machine, with the
-production `DATABASE_URL` in the environment). `prebuild` runs
-`scripts/prisma-generate.mjs`, so the correct Prisma client is always generated
-before `next build`.
+`prebuild` runs `scripts/prisma-generate.mjs`, so the correct Prisma client is
+always generated before `next build`, then `scripts/prisma-migrate.mjs`, which
+applies pending migrations (`prisma migrate deploy`) on production builds only
+(`VERCEL_ENV=production`; preview builds skip it). A database created with
+`prisma db push` has no migration history; it is baselined automatically if its
+schema already matches `prisma/schema.prisma`, otherwise the build fails. Set
+`PRISMA_MIGRATE_ON_BUILD=0` to skip this step, or run `npm run db:deploy` from
+your machine with the production `DATABASE_URL` in the environment.
+
+The grading cache and the rate limit live in each serverless instance's memory,
+so on Vercel they cap bursts rather than enforce exact global limits. A shared
+store (e.g. Upstash Redis) would make both exact.
 
 The grading cache and the rate limit live in each serverless instance's memory,
 so on Vercel they cap bursts rather than enforce exact global limits. A shared
