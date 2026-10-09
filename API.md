@@ -351,8 +351,6 @@ criterion hint, shown only while that idea isn't included. `flaggedIncorrect` me
 the answer states something wrong; it blocks completion. Enable "Continue" when
 `isCorrect` is true, then call submit, which re-grades on the server.
 
-**403** once the assignment is `CLOSED`, same as submit.
-
 ### `POST /api/student/questions/{questionId}/submit` 🔒 student
 
 ```json
@@ -375,12 +373,8 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
 }
 ```
 
-**403** once the assignment is `CLOSED` (its due date has passed).
-
-Each call stores a new attempt. The assignment's `Completion` row is
-created once **every** question has a correct attempt; its `score` is the
-points-weighted average of the best score per question, and `attempts` the total
-attempts on the assignment. The reference is never returned. `criteriaScores[].key`
+Each call stores a new attempt. A `Completion` row is created/updated once the
+answer is judged correct. The reference is never returned. `criteriaScores[].key`
 is the teacher's criterion key and *is* visible to students, so use neutral keys
 (e.g. `idea1`) for key-idea questions.
 
@@ -405,20 +399,15 @@ is the teacher's criterion key and *is* visible to students, so use neutral keys
 
 ## Grading
 
-Grading lives behind `src/lib/grading/index.ts` → `evaluate(input)`. It uses the
-Gemma backend below by default; `GRADING_BACKEND=stub` switches to a
-deterministic offline stub (`jevStub`). Swapping in the real JEV model requires
-no changes at call sites.
+Grading lives behind `src/lib/grading/index.ts` → `evaluate(input)` and currently
+delegates to a deterministic stub (`jevStub`). The stub supports criterion keys
+`completeness`, `elaboration`, `clarity`, and `accuracy` (plus a few synonyms);
+unknown keys fall back to a generic length/reasoning heuristic. The aggregate is
+a weighted average (0–100) with a small bonus for later attempts, and
+`isCorrect` is `score >= 80`. Swapping in the real JEV model requires no changes
+at call sites.
 
-### Stub backend (`GRADING_BACKEND=stub`)
-
-The stub supports criterion keys `completeness`, `elaboration`, `clarity`, and
-`accuracy` (plus a few synonyms); unknown keys fall back to a generic
-length/reasoning heuristic. The aggregate is a weighted average (0–100) with a
-small bonus for later attempts, and `isCorrect` is `score >= 80`. Criterion
-statuses come from the score (80+ `included`, 40+ `in_progress`).
-
-### Gemma backend (default)
+### Gemma backend (`GRADING_BACKEND=gemma`)
 
 Grades through the Gemma decision service in `gemma/` (run it separately; set
 `GEMMA_BATCH_URL` if it isn't on `127.0.0.1:8000`). Each criterion is a **key idea**:

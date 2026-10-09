@@ -21,7 +21,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const user = await requireRole(req, "STUDENT");
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
-    const { question, criteria, choices } = await loadGradableQuestion(questionId, user.id);
+    const { question, criteria } = await loadGradableQuestion(questionId, user.id);
 
     const last = await prisma.submission.findFirst({
       where: { questionId, studentId: user.id },
@@ -33,7 +33,6 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       prompt: question.prompt,
       reference: question.reference,
       criteria,
-      choices,
       studentAnswer: answerText,
       attemptNumber,
     });
