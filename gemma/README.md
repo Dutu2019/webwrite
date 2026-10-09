@@ -1,8 +1,9 @@
 # Gemma Decisions
 
 A small FastAPI service for text decisions using **hosted Gemma 4 through the Gemini API**.
-The boolean/choice/score concepts resemble MediaPipe Decision Maker, but this service does
-not use MediaPipe, diffusion, local inference, or the Jev wire protocol. No GPU is needed.
+The webwrite backend uses it to grade student explanations against key ideas
+(`GRADING_BACKEND=gemma`; see the root [README](../README.md)). It does not use MediaPipe,
+diffusion, local inference, or the Jev wire protocol. No GPU is needed.
 
 ## Start on Windows (PowerShell)
 
@@ -11,20 +12,19 @@ Open a terminal in this folder:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-$env:GEMINI_API_KEY = 'your-key-from-google-ai-studio'
 .\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Visit http://127.0.0.1:8000/docs for the interactive API playground. Expand `/v1/decide`,
-click **Try it out**, edit the included example, and execute. The API key stays on the server.
-Get a key at https://aistudio.google.com/apikey; do not commit it to your repository.
-An `.env` file is not automatically loaded; use the environment variable above.
+The API key comes from `GEMINI_API_KEY` in the **repo-root `.env`** (the same file the
+Next.js backend uses), or from a real environment variable, which takes precedence. Get a
+key at https://aistudio.google.com/apikey; `.env` is git-ignored, so the key stays local.
+`.venv/` is git-ignored too.
 
-The default model is `gemma-4-26b-a4b-it`. To switch before starting the server:
+Visit http://127.0.0.1:8000/docs for the interactive API playground, and
+http://127.0.0.1:8000/health to confirm `api_key_configured: true`.
 
-```powershell
-$env:GEMMA_MODEL = 'gemma-4-31b-it'
-```
+The default model is `gemma-4-26b-a4b-it`. To switch, set `GEMMA_MODEL="gemma-4-31b-it"`
+in `.env` (or as an environment variable) before starting the server.
 
 ## API
 
@@ -100,8 +100,9 @@ The service prompts for JSON and validates it locally. It does not assume that h
 Gemma supports provider-enforced JSON schemas. Unknown labels, wrong types, truncation,
 blocked responses, and malformed output return HTTP 502 instead of an invented decision.
 Timeouts return 504, upstream quota errors 429, invalid inputs 422, and missing configuration 503.
-There are no automatic retries or extra model calls. Latency includes the upstream call
-and parsing, but not the caller's connection to this local service.
+Google's API occasionally fails transiently (HTTP 5xx or a dropped connection); those get
+**exactly one retry**. Timeouts, 429s, and invalid model output are never retried.
+Latency includes the upstream call and parsing, but not the caller's connection to this service.
 
 This is a localhost development API with no inbound authentication. Before publishing it,
 add authentication, quotas, and appropriate deployment controls. Submitted context is sent
@@ -116,11 +117,14 @@ for every question. Instead, the service keeps judgments honest by construction:
   anything else is a 502, never a guessed or repaired answer.
 - **"Can't tell" stays visible.** `null` / `insufficient_information` is returned as-is,
   so callers can treat it as "not yet" (the webwrite backend counts it as not completed).
-- **No silent retries.** A failed call fails; it is never re-asked until it looks good.
+- **No re-asking.** An invalid answer fails; the model is never re-asked until it looks
+  good. (Only Google-side outages get one retry; see above.)
 
-Accuracy has not been measured. To check it for a question, hand-label a few dozen
-answers and compare them with what the service returns; reword unclear rubric levels
-or conditions if they disagree.
+Accuracy has not been formally measured. In a spot check with `gemma-4-26b-a4b-it` on one
+chemistry question, it separated complete, partial, wrong, keyword-dump, and prompt-injection
+answers sensibly and gave the same result on repeat runs (about 1 s per batch). To check a
+question properly, hand-label a few dozen answers and compare them with what the service
+returns; reword unclear rubric levels or conditions if they disagree.
 
 References: [Google's hosted Gemma guide](https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api)
 and [MediaPipe Decision Maker concepts](https://developers.google.com/edge/mediapipe/solutions/decision/decision_maker/python).
