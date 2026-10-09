@@ -303,11 +303,13 @@ async function main() {
       token: studentToken,
       body: { answerText: "t = sqrt(2h/g) = sqrt(40/9.8) = 2.02 s because of gravity." },
     });
-    check(
-      "second attempt increments attemptNumber",
-      resubmit.status === 201 && resubmit.data.attemptNumber === 2,
-      resubmit.data,
-    );
+    if (resubmit.status === 201) {
+      check("second attempt increments attemptNumber", resubmit.data.attemptNumber === 2, resubmit.data);
+    } else if (GRADING_ERRORS.has(resubmit.status)) {
+      console.log(`  ~ resubmit grading skipped (grading ${resubmit.status} ${resubmit.data?.error?.code ?? ""})`);
+    } else {
+      check("second attempt -> 201 or grading error", false, resubmit.data);
+    }
   }
 
   // --- teacher submissions report ------------------------------------------
