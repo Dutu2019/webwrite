@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from grader import grade
+from to_delete.grader import grade
 
 app = FastAPI()
 
