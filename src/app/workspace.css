@@ -343,3 +343,17 @@
   .prof-main { padding: 24px 16px 48px; }
   .class-header { flex-direction: column; }
 }
+
+/* Delete assignment (edit popup) */
+.btn-delete { margin-right: auto; color: var(--error); border-color: transparent; }
+.btn-delete:hover { background: #f6e3df; }
+.btn-danger { background: var(--error); }
+.btn-danger:hover { background: #8f1e17; }
+.delete-confirm {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e8b9b3;
+  border-radius: var(--radius);
+  background: #fbefec;
+}
+.delete-confirm p { margin: 0 0 10px; font-size: 0.92rem; }
