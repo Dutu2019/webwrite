@@ -1,21 +1,65 @@
-import { describe, expect, it } from "vitest";
-import { evaluate } from "../src/lib/grading";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { evaluate } from "@/lib/grading";
+import {
+  batchPrompt,
+  loadReply,
+  parseBatch,
+  type Question,
+} from "@/lib/grading/gemma";
+import type { GradingInput } from "@/lib/grading";
 
-const reference = "t = sqrt(2h/g) = sqrt(40/9.8) ≈ 2.02 s";
+const criteria = [
+  { key: "idea_a", weight: 0.6, description: "States idea A." },
+  { key: "idea_b", weight: 0.4, description: "States idea B.", hint: "Add idea B." },
+];
 
-describe("grading stub (jevStub via evaluate)", () => {
-  it("scores a detailed, reasoned answer highly", async () => {
-    const res = await evaluate({
-      prompt: "How long until the ball hits the ground?",
-      reference,
-      studentAnswer:
-        "Because the ball falls freely under gravity, I use the free-fall relation t = sqrt(2h/g). Substituting h = 20 gives t = sqrt(40/9.8), therefore the time is about 2.02 seconds.",
-      attemptNumber: 1,
-    });
-    expect(res.score).toBeGreaterThan(60);
-    expect(res.criteriaScores.length).toBeGreaterThan(0);
-    expect(res.feedback.length).toBeGreaterThan(0);
-    expect(typeof res.isCorrect).toBe("boolean");
+function geminiReply(answer: unknown, finishReason = "STOP"): Response {
+  return new Response(
+    JSON.stringify({
+      candidates: [
+        { finishReason, content: { parts: [{ text: JSON.stringify(answer) }] } },
+      ],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+function input(overrides: Partial<GradingInput> = {}): GradingInput {
+  return {
+    prompt: "Explain free fall.",
+    reference: "t = sqrt(2h/g)",
+    criteria,
+    studentAnswer: "The ball accelerates under gravity.",
+    attemptNumber: 1,
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+describe("grading with hosted Gemma (Gemini API)", () => {
+  it("maps criterion rubric levels to a weighted score", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    const fetchMock = vi.fn(async () =>
+      geminiReply({ idea_0: 2, idea_1: 1, incorrect: false }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await evaluate(
+      input({ prompt: "map-levels", studentAnswer: "answer one" }),
+    );
+
+    expect(result.criteriaScores.map((s) => s.status)).toEqual([
+      "included",
+      "in_progress",
+    ]);
+    expect(result.score).toBe(80); // (100*0.6 + 50*0.4) / 1.0
+    expect(result.isCorrect).toBe(false);
+    expect(result.feedback).toBe("Add idea B.");
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("marks the answer correct only when every idea is included", async () => {
