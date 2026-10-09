@@ -108,7 +108,7 @@ async function parse<T>(res: Response): Promise<T> {
   return data as T;
 }
 
-async function refresh(): Promise<boolean> {
+async function doRefresh(): Promise<boolean> {
   const refreshToken = read(REFRESH_KEY);
   if (!refreshToken) return false;
   const res = await send("/api/auth/refresh", "POST", { refreshToken });
@@ -116,6 +116,16 @@ async function refresh(): Promise<boolean> {
   const data: { token: string } = await res.json();
   saveSession(data.token);
   return true;
+}
+
+// Requests sent in parallel that all hit an expired token share one refresh
+let refreshing: Promise<boolean> | null = null;
+
+function refresh(): Promise<boolean> {
+  refreshing ??= doRefresh().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
 }
 
 /** Authenticated request; refreshes the access token once on 401. */

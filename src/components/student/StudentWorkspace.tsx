@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, logout, type Course, type StudentAssignment } from "@/lib/client/api";
+import { api, hasSession, logout, type Course, type StudentAssignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
 import Modal from "../Modal";
 import ClassTree from "../professor/ClassTree";
@@ -43,7 +43,8 @@ export default function StudentWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    // Fetched alongside the session check rather than after it; nothing renders until the user is confirmed
+    if (!hasSession()) return;
     load()
       .then((list) => {
         // Coming back from an assignment (/student?course=…) reopens its class
@@ -51,7 +52,7 @@ export default function StudentWorkspace() {
         if (fromUrl && list.some((c) => c.id === fromUrl)) openCourse(fromUrl);
       })
       .catch(() => setLoadError("Couldn't load your classes."));
-  }, [user, load, openCourse]);
+  }, [load, openCourse]);
 
   const sortedCourses = useMemo(
     () => courses?.map((c) => ({ ...c, assignments: sortByDueDate(c.assignments, sortOrder) })) ?? null,

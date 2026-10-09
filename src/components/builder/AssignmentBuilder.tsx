@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, type Assignment } from "@/lib/client/api";
+import { api, ApiError, hasSession, type Assignment } from "@/lib/client/api";
 import { useSession } from "@/lib/client/useSession";
 import QuestionCard from "./QuestionCard";
 import {
@@ -53,7 +53,8 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
   const savedQuestionCount = assignment?.questions?.length ?? 0;
 
   useEffect(() => {
-    if (!user) return;
+    // Fetched alongside the session check rather than after it; nothing renders until the user is confirmed
+    if (!hasSession()) return;
     api<{ assignment: FullAssignment }>(`/api/assignments/${assignmentId}`)
       .then(({ assignment }) => {
         const loaded = assignment.questions.map(draftFromQuestion);
@@ -67,7 +68,7 @@ export default function AssignmentBuilder({ assignmentId }: { assignmentId: stri
       .catch((err) =>
         setLoadError(err instanceof ApiError && err.status === 404 ? "Assignment not found." : "Couldn't load the assignment."),
       );
-  }, [user, assignmentId]);
+  }, [assignmentId]);
 
   // Warn before leaving with unsaved questions
   useEffect(() => {

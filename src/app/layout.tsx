@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Lora } from "next/font/google";
-import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./workspace.css";
 import "./builder.css";
