@@ -351,6 +351,8 @@ criterion hint, shown only while that idea isn't included. `flaggedIncorrect` me
 the answer states something wrong; it blocks completion. Enable "Continue" when
 `isCorrect` is true, then call submit, which re-grades on the server.
 
+**403** once the assignment is `CLOSED`, same as submit.
+
 ### `POST /api/student/questions/{questionId}/submit` 🔒 student
 
 ```json
@@ -372,6 +374,8 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
   "completion": { "completedAt": "...", "score": 91, "attempts": 1 }
 }
 ```
+
+**403** once the assignment is `CLOSED` (its due date has passed).
 
 Each call stores a new attempt. A `Completion` row is created/updated once the
 answer is judged correct. The reference is never returned. `criteriaScores[].key`

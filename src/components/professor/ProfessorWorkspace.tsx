@@ -19,6 +19,17 @@ type Dialog =
   | { kind: "assignment"; assignment?: Assignment }
   | null;
 
+type SortOrder = "latest" | "soonest";
+
+/** Sort by due date in either direction; assignments without one always go last. */
+function sortByDueDate(list: Assignment[], order: SortOrder) {
+  return [...list].sort((a, b) => {
+    if (!a.dueAt || !b.dueAt) return Number(!a.dueAt) - Number(!b.dueAt);
+    const diff = new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+    return order === "soonest" ? diff : -diff;
+  });
+}
+
 export default function ProfessorWorkspace() {
   const router = useRouter();
   const user = useSession("TEACHER");
