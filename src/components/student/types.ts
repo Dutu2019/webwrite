@@ -22,7 +22,8 @@ export interface Attempt {
   attemptNumber: number;
   answerText: string;
   score: number | null;
-  criteriaScores: { key: string; score: number; status?: IdeaStatus }[];
+  /** Positional labels only; criterion keys stay server-side. */
+  criteriaScores: { label: string; score: number; status: IdeaStatus | null }[];
   feedback: string | null;
   isCorrect: boolean;
   createdAt: string;

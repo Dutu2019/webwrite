@@ -138,6 +138,26 @@ export function studentQuestionDto(
   };
 }
 
+interface StoredCriteriaScore {
+  key: string;
+  score: number;
+  weight: number;
+  status?: string;
+}
+
+/**
+ * Student view of per-criterion scores. Teacher-chosen keys can describe the
+ * idea itself, so students get positional labels ("Idea 1", …) instead.
+ */
+export function studentCriteriaScores(scores: StoredCriteriaScore[]) {
+  return scores.map((c, i) => ({
+    label: `Idea ${i + 1}`,
+    score: c.score,
+    weight: c.weight,
+    status: c.status ?? null,
+  }));
+}
+
 /** Student view of one of their own submission attempts. */
 export function studentSubmissionDto(s: Submission) {
   return {
@@ -146,17 +166,18 @@ export function studentSubmissionDto(s: Submission) {
     attemptNumber: s.attemptNumber,
     answerText: s.answerText,
     score: s.score,
-    criteriaScores: parseJson<unknown>(s.criteriaScores, []),
+    criteriaScores: studentCriteriaScores(parseJson<StoredCriteriaScore[]>(s.criteriaScores, [])),
     feedback: s.feedback,
     isCorrect: s.isCorrect,
     createdAt: s.createdAt,
   };
 }
 
-/** Teacher view of a student's submission. */
+/** Teacher view of a student's submission, with the real criterion keys. */
 export function teacherSubmissionDto(s: Submission) {
   return {
     ...studentSubmissionDto(s),
+    criteriaScores: parseJson<StoredCriteriaScore[]>(s.criteriaScores, []),
     studentId: s.studentId,
   };
 }

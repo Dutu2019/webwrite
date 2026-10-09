@@ -330,6 +330,111 @@ async function main() {
   check("student result -> 200", result.status === 200, result.data);
   check("result has perQuestion", Array.isArray(result.data.perQuestion) && result.data.perQuestion.length === 2, result.data);
 
+  // --- key ideas: labels, hidden idea text, essays ---------------------------
+  const SECRET = "SECRET-IDEA-TEXT";
+  const ideaQuestions = (type: "KEY_IDEAS" | "ESSAY") => ({
+    type,
+    prompt: "Two hydrogen atoms share electrons. Describe how sharing holds them together.",
+    reference: "Both nuclei attract the shared electrons; each atom gets a full shell.",
+    criteria: [
+      { key: "smoke_key_attraction", weight: 1, hint: "What attracts the shared electrons?",
+        description: `${SECRET} Both nuclei are attracted to the shared electrons.` },
+      { key: "smoke_key_shells", weight: 1, hint: "What happens to each valence shell?",
+        description: `${SECRET} Sharing fills each atom's valence shell.` },
+    ],
+  });
+  const ideaAssignment = await call("POST", `/api/courses/${courseId}/assignments`, {
+    token: teacherToken,
+    body: { title: "Smoke Key Ideas", questions: [ideaQuestions("KEY_IDEAS"), ideaQuestions("ESSAY")] },
+  });
+  check("create key-idea assignment -> 201", ideaAssignment.status === 201, ideaAssignment.data);
+  const ideaAssignmentId: string = ideaAssignment.data.assignment.id;
+  const [keyIdeasId, essayId]: string[] = ideaAssignment.data.assignment.questions.map((q: any) => q.id);
+  await call("POST", `/api/assignments/${ideaAssignmentId}/publish`, {
+    token: teacherToken,
+    body: { published: true },
+  });
+
+  const ideaDetail = await call("GET", `/api/student/assignments/${ideaAssignmentId}`, {
+    token: studentToken,
+  });
+  check(
+    "student sees positional idea labels only",
+    JSON.stringify(ideaDetail.data.questions[0].ideas) ===
+      JSON.stringify([{ label: "Idea 1" }, { label: "Idea 2" }]) &&
+      !JSON.stringify(ideaDetail.data).includes(SECRET) &&
+      !JSON.stringify(ideaDetail.data).includes("smoke_key_"),
+    ideaDetail.data,
+  );
+
+  const STATUSES = ["not_completed", "in_progress", "included"];
+  const ideaAnswer = "Sharing fills both valence shells, and both protons pull on the shared electrons.";
+  const ideaCheck = await call("POST", `/api/student/questions/${keyIdeasId}/check`, {
+    token: studentToken,
+    body: { answerText: ideaAnswer },
+  });
+  if (ideaCheck.status === 200) {
+    check(
+      "live check returns labelled three-state idea statuses",
+      ideaCheck.data.ideas.length === 2 &&
+        ideaCheck.data.ideas.every(
+          (idea: any, i: number) => idea.label === `Idea ${i + 1}` && STATUSES.includes(idea.status),
+        ),
+      ideaCheck.data,
+    );
+    check(
+      "live check never leaks idea text or keys",
+      !JSON.stringify(ideaCheck.data).includes(SECRET) && !JSON.stringify(ideaCheck.data).includes("smoke_key_"),
+      ideaCheck.data,
+    );
+  } else if (GRADING_ERRORS.has(ideaCheck.status)) {
+    console.log(`  ~ key-idea check skipped (grading ${ideaCheck.status} ${ideaCheck.data?.error?.code ?? ""})`);
+  } else {
+    check("key-idea check -> 200 or grading error", false, ideaCheck.data);
+  }
+
+  const essayCheck = await call("POST", `/api/student/questions/${essayId}/check`, {
+    token: studentToken,
+    body: { answerText: "The two atoms are held together by magic glue that cancels gravity." },
+  });
+  if (essayCheck.status === 200) {
+    check("essays are never flagged incorrect", essayCheck.data.flaggedIncorrect === false, essayCheck.data);
+  } else if (GRADING_ERRORS.has(essayCheck.status)) {
+    console.log(`  ~ essay check skipped (grading ${essayCheck.status} ${essayCheck.data?.error?.code ?? ""})`);
+  } else {
+    check("essay check -> 200 or grading error", false, essayCheck.data);
+  }
+
+  const afterChecks = await call("GET", `/api/student/assignments/${ideaAssignmentId}`, {
+    token: studentToken,
+  });
+  check("live checks store no attempts", afterChecks.data.questions[0].attempts.length === 0, afterChecks.data);
+
+  const ideaSubmit = await call("POST", `/api/student/questions/${keyIdeasId}/submit`, {
+    token: studentToken,
+    body: { answerText: ideaAnswer },
+  });
+  if (ideaSubmit.status === 201) {
+    check(
+      "student criteriaScores use labels, not keys",
+      ideaSubmit.data.criteriaScores.every((c: any, i: number) => c.label === `Idea ${i + 1}` && !("key" in c)) &&
+        !JSON.stringify(ideaSubmit.data).includes("smoke_key_"),
+      ideaSubmit.data,
+    );
+    const ideaReport = await call("GET", `/api/assignments/${ideaAssignmentId}/submissions`, {
+      token: teacherToken,
+    });
+    check(
+      "teacher report keeps real criterion keys",
+      JSON.stringify(ideaReport.data).includes("smoke_key_attraction"),
+      ideaReport.data,
+    );
+  } else if (GRADING_ERRORS.has(ideaSubmit.status)) {
+    console.log(`  ~ key-idea submit skipped (grading ${ideaSubmit.status} ${ideaSubmit.data?.error?.code ?? ""})`);
+  } else {
+    check("key-idea submit -> 201 or grading error", false, ideaSubmit.data);
+  }
+
   // --- direct invite via student lookup ------------------------------------
   const search = await call("GET", `/api/students/search?q=Other`, { token: teacherToken });
   check("student search finds match", search.status === 200 && search.data.students.length >= 1, search.data);
@@ -357,6 +462,29 @@ async function main() {
     token: otherToken,
   });
   check("accepted student can now read assignment", otherDetail.status === 200, otherDetail.data);
+
+  // --- grading rate limit ---------------------------------------------------
+  // Identical text each time, so at most one request reaches the model. The
+  // limit is enforced before grading, so this works even without an API key.
+  let limitedAt = -1;
+  let limited: Res | null = null;
+  for (let i = 0; i < 35; i++) {
+    const r = await call("POST", `/api/student/questions/${keyIdeasId}/check`, {
+      token: otherToken,
+      body: { answerText: "Rate limit probe: sharing fills the shells." },
+    });
+    if (r.data?.error?.code === "RATE_LIMITED") {
+      limitedAt = i;
+      limited = r;
+      break;
+    }
+  }
+  check("grading is rate limited after 30 requests/minute", limitedAt === 30, { limitedAt });
+  check(
+    "rate limit returns 429 with retryAfterSeconds",
+    limited?.status === 429 && typeof limited?.data?.error?.details?.retryAfterSeconds === "number",
+    limited?.data,
+  );
 
   console.log(`\nAll ${passed} smoke checks passed.`);
 }

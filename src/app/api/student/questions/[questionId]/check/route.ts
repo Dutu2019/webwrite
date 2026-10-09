@@ -2,7 +2,9 @@ import type { NextRequest } from "next/server";
 import { requireRole } from "@/lib/guards";
 import { handle, ok } from "@/lib/http";
 import { evaluate } from "@/lib/grading";
-import { ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
+import { gradingInput, ideaProgress, loadGradableQuestion } from "@/lib/grading/question";
+import { rateLimit } from "@/lib/rateLimit";
+import { GRADING_RATE_LIMIT } from "@/lib/constants";
 import { SubmitSchema } from "@/lib/validation/schemas";
 
 interface Ctx {
@@ -17,18 +19,13 @@ interface Ctx {
 export async function POST(req: NextRequest, { params }: Ctx) {
   return handle(async () => {
     const user = await requireRole(req, "STUDENT");
+    rateLimit(`grading:${user.id}`, GRADING_RATE_LIMIT.max, GRADING_RATE_LIMIT.windowMs);
     const { questionId } = await params;
     const { answerText } = SubmitSchema.parse(await req.json());
-    const { question, criteria, choices } = await loadGradableQuestion(questionId, user.id);
+    const loaded = await loadGradableQuestion(questionId, user.id);
+    const { criteria } = loaded;
 
-    const result = await evaluate({
-      prompt: question.prompt,
-      reference: question.reference,
-      criteria,
-      choices,
-      studentAnswer: answerText,
-      attemptNumber: 1,
-    });
+    const result = await evaluate(gradingInput(loaded, answerText, 1));
 
     return ok({
       ideas: ideaProgress(result, criteria),

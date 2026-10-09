@@ -4,7 +4,7 @@ import { assertEnrolled } from "@/lib/guards";
 import { forbidden, notFound } from "@/lib/http";
 import { assignmentStatus, parseJson } from "@/lib/dto";
 import { DEFAULT_CRITERIA } from "@/lib/constants";
-import type { ChoiceOption, Criterion, GradingResult } from "./types";
+import type { ChoiceOption, Criterion, GradingInput, GradingResult } from "./types";
 
 /**
  * Load a question a student may answer (published, not closed, and they're
@@ -34,6 +34,28 @@ export function choicesOf(question: Pick<Question, "type" | "options">): ChoiceO
 export function criteriaOf(question: Pick<Question, "criteria">): Criterion[] {
   const criteria = parseJson<Criterion[] | null>(question.criteria, null);
   return criteria?.length ? criteria : DEFAULT_CRITERIA.map((c) => ({ ...c }));
+}
+
+/**
+ * Everything `evaluate()` needs for one answer. Essays have no single right
+ * answer, so they skip the "states something incorrect" check — otherwise a
+ * defensible position could be flagged and block completion.
+ */
+export function gradingInput(
+  loaded: Awaited<ReturnType<typeof loadGradableQuestion>>,
+  studentAnswer: string,
+  attemptNumber: number,
+): GradingInput {
+  const { question, criteria, choices } = loaded;
+  return {
+    prompt: question.prompt,
+    reference: question.reference,
+    criteria,
+    choices,
+    studentAnswer,
+    attemptNumber,
+    checkIncorrect: question.type !== "ESSAY",
+  };
 }
 
 /**

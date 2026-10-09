@@ -12,6 +12,9 @@ export type QuestionType = (typeof QUESTION_TYPES)[number];
 /** Aggregate score (0–100) at or above which an answer counts as correct. */
 export const CORRECT_THRESHOLD = 80;
 
+/** Per-student cap on grading requests (live checks + submits) per minute. */
+export const GRADING_RATE_LIMIT = { max: 30, windowMs: 60_000 };
+
 /** Fallback criteria when a question doesn't define its own. */
 export const DEFAULT_CRITERIA = [
   {

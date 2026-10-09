@@ -289,7 +289,7 @@ Accept `title`, `description`, `dueAt`, and/or `questions` (full replacement).
     {
       "student": { id, email, name, role, createdAt },
       "completion": { "completedAt": "...", "score": 91, "attempts": 2 },
-      "submissions": [ { id, questionId, attemptNumber, answerText, score, criteriaScores, feedback, isCorrect, createdAt } ]
+      "submissions": [ { id, questionId, attemptNumber, answerText, score, criteriaScores (with criterion keys), feedback, isCorrect, createdAt } ]
     }
   ]
 }
@@ -351,7 +351,9 @@ criterion hint, shown only while that idea isn't included. `flaggedIncorrect` me
 the answer states something wrong; it blocks completion. Enable "Continue" when
 `isCorrect` is true, then call submit, which re-grades on the server.
 
-**403** once the assignment is `CLOSED`, same as submit.
+**403** once the assignment is `CLOSED`, same as submit. Check and submit share a
+per-student limit of **30 grading requests per minute**; beyond that they return
+**429 `RATE_LIMITED`** with `details.retryAfterSeconds`.
 
 ### `POST /api/student/questions/{questionId}/submit` 🔒 student
 
@@ -366,7 +368,7 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
   "submission": { "id", "questionId", "attemptNumber", "answerText", "score", "criteriaScores", "feedback", "isCorrect", "createdAt" },
   "attemptNumber": 1,
   "score": 91,
-  "criteriaScores": [ { "key": "completeness", "score": 100, "weight": 0.6, "status": "included" } ],
+  "criteriaScores": [ { "label": "Idea 1", "score": 100, "weight": 0.6, "status": "included" } ],
   "ideas": [ { "label": "Idea 1", "status": "included", "hint": null } ],
   "flaggedIncorrect": false,
   "feedback": "…guiding hint, never the answer…",
@@ -380,9 +382,10 @@ the answer states something wrong; it blocks completion. Enable "Continue" when
 Each call stores a new attempt. The assignment's `Completion` row is
 created once **every** question has a correct attempt; its `score` is the
 points-weighted average of the best score per question, and `attempts` the total
-attempts on the assignment. The reference is never returned. `criteriaScores[].key`
-is the teacher's criterion key and *is* visible to students, so use neutral keys
-(e.g. `idea1`) for key-idea questions.
+attempts on the assignment. The reference is never returned. Students get
+`criteriaScores` with positional `label`s ("Idea 1", …), never the teacher's
+criterion keys, which could describe the idea; the teacher submissions report
+keeps the keys.
 
 ### `GET /api/student/assignments/{id}/result` 🔒 student
 
@@ -432,7 +435,9 @@ isn't included yet.
 ### How an answer is scored
 
 Every criterion plus an "is anything stated incorrectly?" check are sent to Gemma
-in **one** batched model call at temperature 0. Each criterion is scored on an
+in **one** batched model call at temperature 0. `ESSAY` questions skip the
+incorrect check: with no single right answer, a defensible position must not be
+flagged and block completion. Each criterion is scored on an
 ordered three-level rubric:
 
 | Level           | Score | Meaning                                       |
@@ -456,7 +461,9 @@ blocked output is rejected, never repaired.
   `isCorrect`, and `feedback`.
 
 Identical inputs are cached in memory, so re-checking unchanged text and the
-final submit don't re-call the model.
+final submit don't re-call the model. Transient Gemini failures (HTTP 5xx or a
+dropped connection) get exactly one retry; timeouts, 429s, and invalid replies
+are never retried.
 
 ### Errors
 
@@ -469,4 +476,5 @@ final submit don't re-call the model.
 | 502  | `GRADING_INVALID`       | blocked/incomplete/unparseable model reply        |
 | 504  | `GRADING_TIMEOUT`       | Gemini did not respond in time                    |
 | 429  | `GRADING_QUOTA`         | Gemini quota or rate limit reached                |
+| 429  | `RATE_LIMITED`          | student exceeded 30 grading requests per minute   |
 | 422  | `GRADING_INPUT_INVALID` | overly long input or no criteria                  |

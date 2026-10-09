@@ -37,6 +37,8 @@ export interface GradingInput {
   choices?: ChoiceOption[] | null;
   studentAnswer: string;
   attemptNumber: number;
+  /** Check for factually incorrect statements (default true; off for essays). */
+  checkIncorrect?: boolean;
 }
 
 export interface GradingResult {
