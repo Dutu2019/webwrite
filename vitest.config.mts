@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
@@ -9,5 +9,7 @@ export default defineConfig({
   oxc: { jsx: { runtime: "automatic" } },
   test: {
     environment: "node",
+    // Agent worktrees under .claude/ are full copies of the repo; don't run their tests too.
+    exclude: [...configDefaults.exclude, ".claude/**"],
   },
 });

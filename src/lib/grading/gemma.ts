@@ -464,7 +464,14 @@ export interface HintInput {
   options?: string[];
   /** Essays: argue any defensible position; don't push a "right" answer. */
   essay?: boolean;
+  /** Language to write the hint in (the student's interface language). Defaults to French. */
+  language?: "fr" | "en";
 }
+
+const HINT_LANGUAGE = {
+  fr: 'Write the hint in Quebec French (français québécois), addressing the student as "vous".',
+  en: "Write the hint in English.",
+} as const;
 
 /** Normalised for leak checks: lowercase words only. */
 function words(text: string): string {
@@ -501,7 +508,8 @@ ${context}`,
     (text) => parseHint(text, input.reference),
     false,
     256,
-    HINT_SYSTEM,
+    `${HINT_SYSTEM}
+${HINT_LANGUAGE[input.language ?? "fr"]}`,
     0.4,
   );
 }

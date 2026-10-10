@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 /**
  * Small popup on top of a dimmed page (native <dialog>: focus trap and Esc for free).
@@ -18,6 +19,7 @@ export default function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -39,7 +41,7 @@ export default function Modal({
         <div className="modal-body">
           <header className="modal-header">
             <h2 id="modal-title">{title}</h2>
-            <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
+            <button type="button" className="modal-close" aria-label={t.common.actions.close} onClick={onClose}>×</button>
           </header>
           {children}
         </div>

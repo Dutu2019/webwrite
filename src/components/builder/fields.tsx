@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import { MathPreview } from "../MathText";
 import type { ChoiceOption, DraftErrors, Idea, QuestionDraft } from "./types";
 
@@ -15,33 +16,35 @@ export const MAX_OPTIONS = 20;
 
 export const newOptionId = () => `o${Math.random().toString(36).slice(2, 8)}`;
 
+export const blankOption = (): ChoiceOption => ({ id: newOptionId(), text: "", correct: false });
+
 /** Model answer / rubric text. Never shown to students. */
 export function ReferenceField({
   draft,
   errors,
   readOnly,
   onChange,
-  label,
-  help,
-  placeholder,
+  kind,
   rows = 3,
-}: EditorProps & { label: string; help: string; placeholder: string; rows?: number }) {
+}: EditorProps & { kind: "SHORT_ANSWER" | "KEY_IDEAS" | "ESSAY"; rows?: number }) {
+  const { t } = useI18n();
+  const text = t.builder.reference[kind];
   const id = `ref-${draft.uid}`;
   return (
     <div className="field q-field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>{text.label}</label>
       <textarea
         id={id}
         rows={rows}
         maxLength={20000}
-        placeholder={placeholder}
+        placeholder={text.placeholder}
         value={draft.reference}
         readOnly={readOnly}
         aria-invalid={errors.reference ? true : undefined}
         onChange={(e) => onChange({ ...draft, reference: e.target.value })}
       />
       <MathPreview text={draft.reference} />
-      <p className="field-help">{help}</p>
+      <p className="field-help">{text.help}</p>
       <p className="error">{errors.reference}</p>
     </div>
   );
@@ -49,25 +52,24 @@ export function ReferenceField({
 
 /** List of key ideas, each with an optional hint shown to students who miss it. */
 export function IdeasEditor({ draft, errors, readOnly, onChange }: EditorProps) {
+  const { t } = useI18n();
+  const text = t.builder.ideas;
   const setIdea = (i: number, patch: Partial<Idea>) =>
     onChange({ ...draft, ideas: draft.ideas.map((idea, j) => (j === i ? { ...idea, ...patch } : idea)) });
 
   return (
     <fieldset className="ideas">
-      <legend>Key ideas</legend>
-      <p className="field-help">
-        Students see only &ldquo;Idea 1&rdquo;, &ldquo;Idea 2&rdquo;… and whether they have covered each one. The hint
-        appears while an idea is still missing.
-      </p>
+      <legend>{text.legend}</legend>
+      <p className="field-help">{text.help}</p>
 
       <ol className="idea-list">
         {draft.ideas.map((idea, i) => (
           <li key={i} className="idea-row">
-            <span className="idea-label">Idea {i + 1}</span>
+            <span className="idea-label">{t.common.idea(i + 1)}</span>
             <div className="idea-fields">
               <input
-                aria-label={`Idea ${i + 1}`}
-                placeholder="What the answer must say"
+                aria-label={t.common.idea(i + 1)}
+                placeholder={text.placeholder}
                 maxLength={500}
                 value={idea.text}
                 readOnly={readOnly}
@@ -76,9 +78,9 @@ export function IdeasEditor({ draft, errors, readOnly, onChange }: EditorProps) 
               />
               <MathPreview text={idea.text} />
               <input
-                aria-label={`Hint for idea ${i + 1}`}
+                aria-label={text.hintLabel(i + 1)}
                 className="idea-hint"
-                placeholder="Hint for students (optional)"
+                placeholder={text.hintPlaceholder}
                 maxLength={500}
                 value={idea.hint}
                 readOnly={readOnly}
@@ -90,8 +92,8 @@ export function IdeasEditor({ draft, errors, readOnly, onChange }: EditorProps) 
               <button
                 type="button"
                 className="icon-btn"
-                aria-label={`Remove idea ${i + 1}`}
-                title="Remove idea"
+                aria-label={text.removeLabel(i + 1)}
+                title={text.remove}
                 onClick={() => onChange({ ...draft, ideas: draft.ideas.filter((_, j) => j !== i) })}
               >
                 ×
@@ -107,7 +109,7 @@ export function IdeasEditor({ draft, errors, readOnly, onChange }: EditorProps) 
           className="link-btn"
           onClick={() => onChange({ ...draft, ideas: [...draft.ideas, { text: "", hint: "" }] })}
         >
-          + Add idea
+          {text.add}
         </button>
       )}
       <p className="error">{errors.ideas}</p>
@@ -117,16 +119,16 @@ export function IdeasEditor({ draft, errors, readOnly, onChange }: EditorProps) 
 
 /** Multiple-choice options; tick every correct one. */
 export function OptionsEditor({ draft, errors, readOnly, onChange }: EditorProps) {
-  const correctCount = draft.options.filter((o) => o.correct).length;
+  const { t } = useI18n();
+  const text = t.builder.options;
+  const multi = draft.options.filter((o) => o.correct).length > 1;
   const setOption = (id: string, patch: Partial<ChoiceOption>) =>
     onChange({ ...draft, options: draft.options.map((o) => (o.id === id ? { ...o, ...patch } : o)) });
 
   return (
     <fieldset className="options">
-      <legend>Options</legend>
-      <p className="field-help">
-        Tick the correct option. Tick several and students must choose all that apply. Students never see which are correct.
-      </p>
+      <legend>{text.legend}</legend>
+      <p className="field-help">{text.help}</p>
 
       <ol className="option-list">
         {draft.options.map((o, i) => (
@@ -135,9 +137,9 @@ export function OptionsEditor({ draft, errors, readOnly, onChange }: EditorProps
               type="button"
               role="checkbox"
               aria-checked={o.correct}
-              aria-label={`Option ${i + 1} is correct`}
-              title={o.correct ? "Correct answer" : "Mark as correct"}
-              className={`option-mark${correctCount > 1 ? " is-multi" : ""}${o.correct ? " is-correct" : ""}`}
+              aria-label={text.isCorrectLabel(i + 1)}
+              title={o.correct ? text.correct : text.markCorrect}
+              className={`option-mark${multi ? " is-multi" : ""}${o.correct ? " is-correct" : ""}`}
               disabled={readOnly}
               onClick={() => setOption(o.id, { correct: !o.correct })}
             >
@@ -145,8 +147,8 @@ export function OptionsEditor({ draft, errors, readOnly, onChange }: EditorProps
             </button>
             <div className="option-fields">
               <input
-                aria-label={`Option ${i + 1}`}
-                placeholder={`Option ${i + 1}`}
+                aria-label={text.option(i + 1)}
+                placeholder={text.option(i + 1)}
                 maxLength={2000}
                 value={o.text}
                 readOnly={readOnly}
@@ -160,8 +162,8 @@ export function OptionsEditor({ draft, errors, readOnly, onChange }: EditorProps
               <button
                 type="button"
                 className="icon-btn"
-                aria-label={`Remove option ${i + 1}`}
-                title="Remove option"
+                aria-label={text.removeLabel(i + 1)}
+                title={text.remove}
                 disabled={draft.options.length <= 2}
                 onClick={() => onChange({ ...draft, options: draft.options.filter((x) => x.id !== o.id) })}
               >
@@ -176,9 +178,9 @@ export function OptionsEditor({ draft, errors, readOnly, onChange }: EditorProps
         <button
           type="button"
           className="link-btn"
-          onClick={() => onChange({ ...draft, options: [...draft.options, { id: newOptionId(), text: "", correct: false }] })}
+          onClick={() => onChange({ ...draft, options: [...draft.options, blankOption()] })}
         >
-          + Add option
+          {text.add}
         </button>
       )}
       <p className="error">{errors.options}</p>
